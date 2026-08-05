@@ -38,13 +38,41 @@ infraestrutura compartilhada pronta.
 
 ## Uso
 
+Publicado como [`mcp-sienge-node`](https://www.npmjs.com/package/mcp-sienge-node).
+Não precisa instalar nada: aponte seu cliente MCP para o pacote e o `npx`
+resolve o resto.
+
+```json
+{
+  "mcpServers": {
+    "sienge": {
+      "command": "npx",
+      "args": ["-y", "mcp-sienge-node"],
+      "env": {
+        "SIENGE_API_KEY": "sua-chave",
+        "SIENGE_SUBDOMAIN": "sua-empresa",
+        "SIENGE_MCP_API_PACKAGE": "start"
+      }
+    }
+  }
+}
+```
+
+Ou instalando globalmente:
+
+```bash
+npm install -g mcp-sienge-node
+```
+
+### A partir do código-fonte
+
 ```bash
 npm install
 cp .env.example .env   # preencha as credenciais
 npm start
 ```
 
-Registro no cliente MCP: ver `.mcp.json`.
+Neste caso o registro no cliente MCP fica como em `.mcp.json`.
 
 ### Configuração essencial
 
