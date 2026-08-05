@@ -1,0 +1,306 @@
+/**
+ * SPDX-FileCopyrightText: © 2026 Felipe Ribeiro Lorenzon
+ * SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+ *
+ * As 10 tools do módulo `nucleo` — descoberta, busca genérica e diagnóstico.
+ *
+ * Este módulo está sempre visível: é por ele que o modelo descobre que os
+ * demais existem. As descrições aqui não são documentação — são o texto que o
+ * modelo lê para decidir qual tool chamar, e por isso cada palavra pesa.
+ */
+
+import { z } from "zod";
+import { registerTool } from "../registry.js";
+import { fastConnectionProbe, makeSiengeRequest } from "../http/client.js";
+import { cacheGet, cacheSet } from "../http/cache.js";
+import { fetchAllPaginated } from "../http/paginate.js";
+import { getAuthInfo } from "../config.js";
+import * as apiQuota from "../utils/apiQuota.js";
+import * as tagRegistry from "../modules.js";
+import * as discovery from "../workflows/discovery.js";
+import * as entities from "../api/entities.js";
+import { describePurchaseProcess } from "../knowledge/purchaseProcess.js";
+import { enableByTags, disableByTags, registered } from "../registry.js";
+
+// %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+// ADAPTADORES DE ENTIDADE
+// %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+// Normalizam a assinatura de cada consulta de entidade para o formato que os
+// dispatchers de discovery.js esperam.
+
+const deps = { cacheGet, cacheSet, fetchAllPaginated };
+
+const adaptadores = {
+  // A API de clientes não tem busca por nome; discovery classifica esta
+  // entidade como filtrada na amostra e cuida do filtro.
+  customers: (args = {}) =>
+    entities.buscarClientes(makeSiengeRequest, deps, {
+      limit: args.limit ?? 50,
+      offset: args.offset ?? 0,
+    }),
+
+  // `creditor` é o parâmetro de busca real desta API — o servidor filtra.
+  creditors: (args = {}) =>
+    entities.buscarCredores(makeSiengeRequest, deps, {
+      limit: args.limit ?? 50,
+      offset: args.offset ?? 0,
+      creditor: args.search,
+    }),
+
+  projects: (args = {}) =>
+    entities.buscarEmpreendimentos(makeSiengeRequest, {
+      limit: args.limit ?? 100,
+      offset: args.offset ?? 0,
+      company_id: args.company_id,
+    }),
+
+  // O período é resolvido por discovery, relativo a hoje.
+  bills: (args = {}) =>
+    entities.getBills(makeSiengeRequest, {
+      start_date: args.start_date,
+      end_date: args.end_date,
+      creditor_id: args.creditor_id,
+      limit: args.limit ?? 100,
+      offset: args.offset ?? 0,
+    }),
+
+  purchase_orders: (args = {}) =>
+    entities.buscarPedidos(makeSiengeRequest, {
+      supplier_id: args.supplier_id,
+      building_id: args.building_id,
+      limit: args.limit ?? 100,
+      offset: args.offset ?? 0,
+    }),
+};
+
+// %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+// MÓDULOS ATIVOS
+// %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+// Sob stdio, um processo atende uma sessão — o estado de módulos ativos pode
+// morar no processo. Ver a nota de divergência em modules.js antes de expor
+// este servidor por HTTP.
+
+let modulosAtivos = null;
+
+/** Define o recorte inicial, aplicado por index.js a partir de SIENGE_PROFILE. */
+export function definirModulosAtivos(modulos) {
+  modulosAtivos = modulos === null ? new Set(Object.keys(tagRegistry.MODULES)) : new Set(modulos);
+}
+
+function resumoModulos(ativos) {
+  const contagem = tagRegistry.toolCounts();
+  return Object.entries(tagRegistry.MODULES).map(([nome, descricao]) => ({
+    modulo: nome,
+    descricao,
+    tools: contagem[nome] ?? 0,
+    carregado: ativos.has(nome),
+  }));
+}
+
+// %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+// REGISTRO
+// %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+export function registrarNucleo(server, { perfilConfigurado }) {
+  // ---------- Diagnóstico ----------
+
+  registerTool(server, {
+    name: "test_sienge_connection",
+    description:
+      "Verifica se as credenciais configuradas conseguem autenticar na API do Sienge.\n\n" +
+      "Falha rápido (uma tentativa, timeout de 10s) em vez de aplicar a política\n" +
+      "de retry padrão — o objetivo aqui é um diagnóstico rápido, não robustez\n" +
+      "contra instabilidade de rede.",
+    handler: () =>
+      discovery.testSiengeConnection(fastConnectionProbe, {
+        SIENGE_API_KEY: process.env.SIENGE_API_KEY,
+        SIENGE_USERNAME: process.env.SIENGE_USERNAME,
+        SIENGE_PASSWORD: process.env.SIENGE_PASSWORD,
+      }),
+  });
+
+  registerTool(server, {
+    name: "get_auth_info",
+    description:
+      "Mostra qual mecanismo de autenticação está configurado (Bearer Token ou " +
+      "Basic Auth) e se está pronto para uso.",
+    handler: async () => getAuthInfo(),
+  });
+
+  registerTool(server, {
+    name: "get_sienge_api_quota",
+    description:
+      "Mostra o consumo das cotas diárias da API do Sienge e o saldo restante.\n\n" +
+      "O Sienge limita requisições por dia em duas trilhas independentes: REST,\n" +
+      "larga (100 a 75.000 por dia conforme o pacote), e BULK, estreita (10 a\n" +
+      "200). As consultas de contas a receber, contas a pagar e itens de nota em\n" +
+      "volume usam a trilha BULK.\n\n" +
+      "Consulte antes de uma sequência de consultas bulk: no pacote Special, de\n" +
+      "50 por dia, um panorama financeiro com os dois lados custa 2.\n\n" +
+      "O limite vem de SIENGE_MCP_API_PACKAGE. Sem essa variável o uso é contado,\n" +
+      "mas não há limite de referência — o retorno lista os pacotes disponíveis.",
+    handler: async () => apiQuota.situacaoDasCotas(),
+  });
+
+  // ---------- Conhecimento ----------
+
+  registerTool(server, {
+    name: "describe_purchase_process",
+    description:
+      "Explica o processo de compras do Sienge de ponta a ponta: as 5 etapas, quais\n" +
+      "delas são opcionais, os caminhos válidos e as limitações da API.\n\n" +
+      "Consulte esta tool ANTES de responder qualquer pergunta sobre solicitações,\n" +
+      "cotações, pedidos de compra ou suas aprovações. Ela evita os erros mais\n" +
+      "comuns — como procurar preço numa solicitação de compra, que não tem preço,\n" +
+      "ou supor que todo pedido nasceu de uma solicitação.",
+    handler: () => describePurchaseProcess(),
+  });
+
+  registerTool(server, {
+    name: "list_sienge_entities",
+    description:
+      "Retorna o catálogo de entidades do Sienge consultáveis pelas tools deste servidor.",
+    handler: () => discovery.listSiengeEntities(),
+  });
+
+  // ---------- Busca e paginação ----------
+
+  registerTool(server, {
+    name: "search_sienge_data",
+    description:
+      "Busca `query` em várias entidades do Sienge de uma vez (clientes, credores, " +
+      "projetos, títulos, pedidos de compra).",
+    inputSchema: {
+      query: z.string(),
+      entity_types: z.array(z.string()).nullish(),
+      limit_per_entity: z.number().int().default(10),
+    },
+    handler: async ({ query, entity_types, limit_per_entity = 10 }) => {
+      // Uma única entidade vira busca dirigida; duas ou mais caem na varredura
+      // padrão, que ignora o recorte pedido.
+      const entityType =
+        entity_types && entity_types.length === 1 ? entity_types[0] : null;
+      return discovery.searchSiengeData(adaptadores, query, entityType, limit_per_entity, null);
+    },
+  });
+
+  registerTool(server, {
+    name: "get_sienge_data_paginated",
+    description:
+      "Traz uma página de resultados de uma entidade do Sienge, já com metadados de paginação prontos.",
+    inputSchema: {
+      entity_type: z.string().describe("customers, creditors, projects ou bills"),
+      page: z.number().int().default(1).describe("página desejada, começando em 1"),
+      page_size: z.number().int().default(20).describe("tamanho da página, com teto de 50"),
+      filters: z.record(z.string(), z.any()).nullish().describe("filtros específicos da entidade escolhida"),
+      sort_by: z.string().nullish().describe("campo de ordenação, quando a entidade suportar"),
+    },
+    handler: ({ entity_type, page = 1, page_size = 20, filters, sort_by }) =>
+      discovery.getSiengeDataPaginated(adaptadores, entity_type, page, page_size, filters, sort_by),
+  });
+
+  // ---------- Módulos de tools ----------
+
+  registerTool(server, {
+    name: "list_sienge_modules",
+    description:
+      "Lista os módulos de tools deste servidor e quais estão carregados agora.\n\n" +
+      "Consulte esta tool quando a operação que você precisa fazer no Sienge não\n" +
+      "tiver uma tool correspondente na lista disponível: o servidor carrega o\n" +
+      "catálogo por módulo para economizar contexto, então a tool provavelmente\n" +
+      "existe mas está fora do recorte atual. `enable_sienge_modules` carrega o\n" +
+      "módulo que faltar.",
+    handler: async () => ({
+      success: true,
+      modulos: resumoModulos(modulosAtivos),
+      carregados: [...modulosAtivos].sort(),
+      perfil_configurado: perfilConfigurado === null ? "todos" : [...perfilConfigurado].sort(),
+      observacao:
+        "Use enable_sienge_modules para carregar um módulo. O módulo " +
+        `'${tagRegistry.CORE_MODULE}' está sempre carregado.`,
+    }),
+  });
+
+  registerTool(server, {
+    name: "enable_sienge_modules",
+    description:
+      "Carrega as tools de um ou mais módulos do Sienge nesta sessão.\n\n" +
+      "Módulos: cadastros (clientes, credores, empreendimentos, centros de custo,\n" +
+      "unidades), compras (solicitações, pedidos e notas fiscais de compra),\n" +
+      "cotacoes (cotações e negociação), financeiro (contas a pagar/receber e\n" +
+      "dashboard), contratos (contratos de fornecimento), titulos (API bill-debt\n" +
+      "de títulos a pagar).\n\n" +
+      "As tools carregadas passam a aparecer na lista de ferramentas disponíveis.\n" +
+      "Carregue os módulos de que precisa de uma vez só — cada módulo carregado\n" +
+      "ocupa contexto pelo resto da conversa.",
+    inputSchema: { modules: z.array(z.string()) },
+    handler: async ({ modules }) => {
+      const { validos, desconhecidos } = tagRegistry.normalize(modules);
+      if (desconhecidos.length) {
+        return {
+          success: false,
+          error: `Módulo desconhecido: ${desconhecidos.join(", ")}`,
+          modulos_validos: Object.keys(tagRegistry.MODULES).sort(),
+        };
+      }
+      if (validos.size === 0) {
+        return { success: false, error: "Informe ao menos um módulo em `modules`." };
+      }
+
+      modulosAtivos = new Set([...modulosAtivos, ...validos]);
+      enableByTags(validos);
+
+      const contagem = tagRegistry.toolCounts();
+      return {
+        success: true,
+        carregados_agora: [...validos].sort(),
+        tools_adicionadas: [...validos].reduce((soma, m) => soma + (contagem[m] ?? 0), 0),
+        modulos_carregados: [...modulosAtivos].sort(),
+      };
+    },
+  });
+
+  registerTool(server, {
+    name: "disable_sienge_modules",
+    description:
+      "Descarrega as tools de um ou mais módulos do Sienge nesta sessão, liberando\n" +
+      "o contexto que elas ocupavam.\n\n" +
+      "O módulo 'nucleo' não pode ser descarregado — é por ele que os demais\n" +
+      "voltam a ser carregados.",
+    inputSchema: { modules: z.array(z.string()) },
+    handler: async ({ modules }) => {
+      const { validos, desconhecidos } = tagRegistry.normalize(modules);
+      if (desconhecidos.length) {
+        return {
+          success: false,
+          error: `Módulo desconhecido: ${desconhecidos.join(", ")}`,
+          modulos_validos: Object.keys(tagRegistry.MODULES).sort(),
+        };
+      }
+
+      const alvo = new Set([...validos].filter((m) => m !== tagRegistry.CORE_MODULE));
+      if (alvo.size === 0) {
+        return {
+          success: false,
+          error: `Nada a descarregar — '${tagRegistry.CORE_MODULE}' é permanente.`,
+        };
+      }
+
+      modulosAtivos = new Set([...modulosAtivos].filter((m) => !alvo.has(m)));
+      disableByTags(alvo);
+      // Tools com mais de uma tag (ex.: create_purchase_invoice_simple, em
+      // financeiro e compras) seriam derrubadas junto pelo passo acima.
+      // Reafirmar os módulos que continuam ativos as traz de volta, porque a
+      // última regra de visibilidade é a que vale.
+      if (modulosAtivos.size) enableByTags(modulosAtivos);
+
+      return {
+        success: true,
+        descarregados: [...alvo].sort(),
+        modulos_carregados: [...modulosAtivos].sort(),
+      };
+    },
+  });
+
+  return registered;
+}

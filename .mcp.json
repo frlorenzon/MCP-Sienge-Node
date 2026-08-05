@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "sienge-node": {
+      "command": "node",
+      "args": ["--env-file=.env", "src/index.js"]
+    }
+  }
+}

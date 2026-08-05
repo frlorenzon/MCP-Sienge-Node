@@ -1,0 +1,5814 @@
+[
+  {
+    "name": "test_sienge_connection",
+    "description": "Verifica se as credenciais configuradas conseguem autenticar na API do Sienge.\n\nFalha rápido (uma tentativa, timeout de 10s) em vez de aplicar a política\nde retry padrão — o objetivo aqui é um diagnóstico rápido, não robustez\ncontra instabilidade de rede.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {},
+      "type": "object"
+    },
+    "tags": [
+      "nucleo"
+    ]
+  },
+  {
+    "name": "describe_purchase_process",
+    "description": "Explica o processo de compras do Sienge de ponta a ponta: as 5 etapas, quais\ndelas são opcionais, os caminhos válidos e as limitações da API.\n\nConsulte esta tool ANTES de responder qualquer pergunta sobre solicitações,\ncotações, pedidos de compra ou suas aprovações. Ela evita os erros mais\ncomuns — como procurar preço numa solicitação de compra, que não tem preço,\nou supor que todo pedido nasceu de uma solicitação.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {},
+      "type": "object"
+    },
+    "tags": [
+      "nucleo"
+    ]
+  },
+  {
+    "name": "list_sienge_entities",
+    "description": "Retorna o catálogo de entidades do Sienge consultáveis pelas tools deste servidor.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {},
+      "type": "object"
+    },
+    "tags": [
+      "nucleo"
+    ]
+  },
+  {
+    "name": "list_sienge_modules",
+    "description": "Lista os módulos de tools deste servidor e quais estão carregados agora.\n\nConsulte esta tool quando a operação que você precisa fazer no Sienge não\ntiver uma tool correspondente na lista disponível: o servidor carrega o\ncatálogo por módulo para economizar contexto, então a tool provavelmente\nexiste mas está fora do recorte atual. `enable_sienge_modules` carrega o\nmódulo que faltar.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {},
+      "type": "object"
+    },
+    "tags": [
+      "nucleo"
+    ]
+  },
+  {
+    "name": "enable_sienge_modules",
+    "description": "Carrega as tools de um ou mais módulos do Sienge nesta sessão.\n\nMódulos: cadastros (clientes, credores, empreendimentos, centros de custo,\nunidades), compras (solicitações, pedidos e notas fiscais de compra),\ncotacoes (cotações e negociação), financeiro (contas a pagar/receber e\ndashboard), contratos (contratos de fornecimento), titulos (API bill-debt\nde títulos a pagar).\n\nAs tools carregadas passam a aparecer na lista de ferramentas disponíveis.\nCarregue os módulos de que precisa de uma vez só — cada módulo carregado\nocupa contexto pelo resto da conversa.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "modules": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "modules"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "nucleo"
+    ]
+  },
+  {
+    "name": "disable_sienge_modules",
+    "description": "Descarrega as tools de um ou mais módulos do Sienge nesta sessão, liberando\no contexto que elas ocupavam.\n\nO módulo 'nucleo' não pode ser descarregado — é por ele que os demais\nvoltam a ser carregados.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "modules": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "modules"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "nucleo"
+    ]
+  },
+  {
+    "name": "search_sienge_data",
+    "description": "Busca `query` em várias entidades do Sienge de uma vez (clientes, credores, projetos, títulos, pedidos de compra).",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "query": {
+          "type": "string"
+        },
+        "entity_types": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "limit_per_entity": {
+          "default": 10,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "query"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "nucleo"
+    ]
+  },
+  {
+    "name": "get_sienge_data_paginated",
+    "description": "Traz uma página de resultados de uma entidade do Sienge, já com metadados de paginação prontos.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "entity_type": {
+          "type": "string",
+          "description": "customers, creditors, projects ou bills"
+        },
+        "page": {
+          "default": 1,
+          "type": "integer",
+          "description": "página desejada, começando em 1"
+        },
+        "page_size": {
+          "default": 20,
+          "type": "integer",
+          "description": "tamanho da página, com teto de 50"
+        },
+        "filters": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "filtros específicos da entidade escolhida"
+        },
+        "sort_by": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "campo de ordenação, quando a entidade suportar"
+        }
+      },
+      "required": [
+        "entity_type"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "nucleo"
+    ]
+  },
+  {
+    "name": "get_sienge_customers",
+    "description": "Busca clientes cadastrados no Sienge.\n\n⚠️ A API de clientes NÃO tem busca por nome. `search` é aplicado no\ncliente, sobre os registros lidos — um cliente fora da página não aparece,\ne o retorno declara isso em `busca_por_nome.ressalva`. Para busca\nconclusiva use `cpf` ou `cnpj`, que o servidor filtra.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "search": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "filtro por nome aplicado localmente (ver ressalva acima)"
+        },
+        "cpf": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "cnpj": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "only_active": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "True traz só clientes ativos"
+        },
+        "enterprise_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "restringe a um empreendimento"
+        },
+        "modified_after": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "só clientes alterados a partir da data (yyyy-MM-dd),\nútil para sincronização incremental"
+        },
+        "limit": {
+          "default": 50,
+          "type": "integer"
+        },
+        "offset": {
+          "default": 0,
+          "type": "integer"
+        },
+        "fetch_all": {
+          "default": false,
+          "type": "boolean",
+          "description": "varre todas as páginas em vez de uma só"
+        },
+        "max_records": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "type": "object"
+    },
+    "tags": [
+      "cadastros"
+    ]
+  },
+  {
+    "name": "get_sienge_creditors",
+    "description": "Busca credores/fornecedores cadastrados no Sienge.\n\nDiferente de clientes, esta API filtra por texto no servidor: `search`\nprocura em nome, nome fantasia ou código do credor, então não encontrar é\nconclusivo.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "search": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "nome, nome fantasia ou código — filtrado pelo servidor"
+        },
+        "cpf": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "CPF sem máscara"
+        },
+        "cnpj": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "lista de CNPJs sem máscara; resolve vários credores numa chamada"
+        },
+        "limit": {
+          "default": 50,
+          "type": "integer"
+        },
+        "offset": {
+          "default": 0,
+          "type": "integer"
+        },
+        "fetch_all": {
+          "default": false,
+          "type": "boolean",
+          "description": "varre todas as páginas em vez de uma só"
+        },
+        "max_records": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "type": "object"
+    },
+    "tags": [
+      "cadastros"
+    ]
+  },
+  {
+    "name": "get_sienge_projects",
+    "description": "Busca empreendimentos/obras cadastrados no Sienge, opcionalmente filtrando por empresa.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "company_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "limit": {
+          "default": 100,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "tags": [
+      "cadastros"
+    ]
+  },
+  {
+    "name": "get_sienge_payment_categories",
+    "description": "Lista as categorias de plano financeiro (payment categories) cadastradas no Sienge.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "limit": {
+          "default": 200,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "tags": [
+      "cadastros"
+    ]
+  },
+  {
+    "name": "get_sienge_cost_centers",
+    "description": "Lista os centros de custo cadastrados no Sienge, ordenados por código.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "limit": {
+          "default": 200,
+          "type": "integer"
+        },
+        "offset": {
+          "default": 0,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "tags": [
+      "cadastros"
+    ]
+  },
+  {
+    "name": "get_sienge_enterprise_groupings",
+    "description": "Busca os agrupamentos de unidades de um empreendimento.\n\nO parâmetro limit é aceito por compatibilidade de assinatura, mas a\nconsulta subjacente não pagina — retorna sempre a lista completa.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "enterprise_id": {
+          "type": "integer"
+        },
+        "limit": {
+          "default": 100,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "enterprise_id"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "cadastros"
+    ]
+  },
+  {
+    "name": "get_sienge_customer",
+    "description": "Consulta os dados completos de um cliente pelo id.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "customer_id": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "customer_id"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "cadastros"
+    ]
+  },
+  {
+    "name": "get_sienge_customer_attachments",
+    "description": "Lista os anexos de um cliente.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "customer_id": {
+          "type": "integer"
+        },
+        "limit": {
+          "default": 100,
+          "type": "integer"
+        },
+        "offset": {
+          "default": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "customer_id"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "cadastros"
+    ]
+  },
+  {
+    "name": "download_sienge_customer_attachment",
+    "description": "Baixa um anexo de cliente, retornando o conteúdo em Base64.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "customer_id": {
+          "type": "integer"
+        },
+        "attachment_id": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "customer_id",
+        "attachment_id"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "cadastros"
+    ]
+  },
+  {
+    "name": "get_sienge_creditor",
+    "description": "Consulta os dados completos de um credor pelo id.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "creditor_id": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "creditor_id"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "cadastros"
+    ]
+  },
+  {
+    "name": "get_sienge_creditor_bank_information",
+    "description": "Lista as contas bancárias cadastradas de um credor.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "creditor_id": {
+          "type": "integer"
+        },
+        "limit": {
+          "default": 100,
+          "type": "integer"
+        },
+        "offset": {
+          "default": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "creditor_id"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "cadastros"
+    ]
+  },
+  {
+    "name": "get_sienge_creditor_pix_keys",
+    "description": "Lista as chaves Pix cadastradas de um credor.\n\nConsulte antes de definir Pix como forma de pagamento: confere se a chave\na ser usada é a que consta no cadastro do credor.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "creditor_id": {
+          "type": "integer"
+        },
+        "limit": {
+          "default": 100,
+          "type": "integer"
+        },
+        "offset": {
+          "default": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "creditor_id"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "cadastros"
+    ]
+  },
+  {
+    "name": "get_sienge_enterprise",
+    "description": "Consulta os dados de um empreendimento pelo id.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "enterprise_id": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "enterprise_id"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "cadastros"
+    ]
+  },
+  {
+    "name": "get_sienge_cost_center",
+    "description": "Consulta os dados de um centro de custo pelo id.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "cost_center_id": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "cost_center_id"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "cadastros"
+    ]
+  },
+  {
+    "name": "get_sienge_cost_center_available",
+    "description": "Verifica se um centro de custo está disponível para uso.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "cost_center_id": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "cost_center_id"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "cadastros"
+    ]
+  },
+  {
+    "name": "get_sienge_cost_center_register_settings",
+    "description": "Consulta os parâmetros de cadastro imediato de um centro de custo.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "cost_center_id": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "cost_center_id"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "cadastros"
+    ]
+  },
+  {
+    "name": "get_sienge_payment_category",
+    "description": "Consulta uma conta do plano financeiro pelo código.\n\nO código é string, como \"2010101\" — é o mesmo valor usado em\npaymentCategoriesId nas apropriações de título.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "payment_categories_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "payment_categories_id"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "cadastros"
+    ]
+  },
+  {
+    "name": "get_sienge_units",
+    "description": "Lista unidades imobiliárias — apartamentos, lotes, salas.\n\nNão confundir com as unidades construtivas das apropriações de obra\n(buildingUnitId) nem com unidades de medida.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "enterprise_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "filtro por nome, aplicado pelo servidor"
+        },
+        "commercial_stock": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "additional_data": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "\"ALL\" traz os dados complementares e aumenta bastante\na resposta; \"NONE\" omite"
+        },
+        "limit": {
+          "default": 100,
+          "type": "integer"
+        },
+        "offset": {
+          "default": 0,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "tags": [
+      "cadastros"
+    ]
+  },
+  {
+    "name": "get_sienge_unit",
+    "description": "Consulta os dados de uma unidade imobiliária pelo id.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "unit_id": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "unit_id"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "cadastros"
+    ]
+  },
+  {
+    "name": "get_sienge_unit_groupings",
+    "description": "Lista os agrupamentos aos quais uma unidade pertence.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "unit_id": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "unit_id"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "cadastros"
+    ]
+  },
+  {
+    "name": "get_sienge_unit_characteristics",
+    "description": "Lista o catálogo de características de unidade.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "limit": {
+          "default": 100,
+          "type": "integer"
+        },
+        "offset": {
+          "default": 0,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "tags": [
+      "cadastros"
+    ]
+  },
+  {
+    "name": "get_sienge_unit_situations",
+    "description": "Lista o catálogo de situações de unidade.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "limit": {
+          "default": 100,
+          "type": "integer"
+        },
+        "offset": {
+          "default": 0,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "tags": [
+      "cadastros"
+    ]
+  },
+  {
+    "name": "get_sienge_unit_evaluations",
+    "description": "Lista as avaliações registradas de uma unidade.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "unit_id": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "unit_id"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "cadastros"
+    ]
+  },
+  {
+    "name": "get_sienge_customer_types",
+    "description": "Lista os tipos de cliente cadastrados.\n\nDiferente de /customers, esta API filtra por `description` no servidor.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "limit": {
+          "default": 100,
+          "type": "integer"
+        },
+        "offset": {
+          "default": 0,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "tags": [
+      "cadastros"
+    ]
+  },
+  {
+    "name": "compras_pedidos_para_aprovar",
+    "description": "Fila de pedidos de compra pendentes de aprovação, pronta para análise.\n\nNuma chamada só: pedido, data, fornecedor, obra, valor, e por item o\ninsumo, a quantidade, a unidade e o preço unitário. As divergências vêm\nmarcadas em `alertas`.\n\nUse sempre que a pergunta for \"quais pedidos preciso aprovar\" ou\nequivalente. Não monte esse percurso à mão com get_sienge_purchase_orders\n+ get_sienge_purchase_order_items: o resultado é o mesmo e custa dezenas\nde vezes mais.\n\n`fornecedor`, `obra` e `insumo` vêm como id na linha; os nomes estão nos\ndicionários `fornecedores`, `obras` e `insumos` no fim da resposta, cada um\nescrito uma vez só. Faça o join a partir deles — não há chamada a fazer\npara descobrir esses nomes.\n\nNão cobre anexos, apropriações, previsões de entrega nem consulta item a\nitem — para esses, enable_sienge_modules([\"compras_api\"]).\n\nNão aprova nada: aprovar é ato separado, de outra pessoa, em\nauthorize_purchase_order. Ver describe_purchase_process().\n\nJanela fixa de 180 dias. A data volta em `data`, então recorte menor se faz\nsobre o resultado.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "building_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "restringe a uma obra"
+        },
+        "max_pedidos": {
+          "default": 50,
+          "type": "integer",
+          "description": "teto de pedidos analisados (padrão 50, máximo 200)"
+        }
+      },
+      "type": "object"
+    },
+    "tags": [
+      "compras"
+    ]
+  },
+  {
+    "name": "compras_historico_preco_insumo",
+    "description": "O que a empresa já pagou por um insumo, por fornecedor, no período.\n\nÉ a referência INTERNA de preço — o contraponto barato à pesquisa de preço\nde mercado. Antes de buscar preço na web para julgar um item de pedido,\nconsulte aqui: o histórico da própria empresa costuma bastar, e custa\nmuito menos que uma busca externa por insumo.\n\n⚠️ CUSTO DE COTA: a primeira chamada numa janela varre os pedidos do período\ne lê os itens de cada um (1 + N chamadas REST). O índice fica em cache por\n6 horas e responde qualquer outro insumo da mesma janela sem custo — então\nconsulte todos os insumos de um pedido em sequência, não espalhados ao\nlongo do dia. O campo `chamadas_api` do retorno informa o consumido; o\nsaldo do dia está em get_sienge_api_quota.\n\nDevolve menor, maior, médio e último preço, a variação percentual no\nperíodo, o recorte por fornecedor e as 10 compras mais recentes. Sem\nocorrências, diz isso explicitamente — ausência de histórico não é preço zero.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "product_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "description": "id do insumo, como vem em `insumo` nos itens do pedido"
+        },
+        "start_date": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "início da janela, yyyy-MM-dd (padrão: 12 meses atrás)"
+        },
+        "end_date": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "fim da janela, yyyy-MM-dd (padrão: hoje)"
+        },
+        "max_pedidos": {
+          "default": 150,
+          "type": "integer",
+          "description": "teto de pedidos varridos para montar o índice (padrão 150)"
+        }
+      },
+      "required": [
+        "product_id"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "compras"
+    ]
+  },
+  {
+    "name": "get_sienge_purchase_orders",
+    "description": "Busca pedidos de compra, com filtros combináveis.\n\nETAPA 4 do processo de compras: a ordem da empresa para o fornecedor\nfaturar. Um pedido pode vir de uma solicitação, de uma cotação, ou de\nnenhuma das duas — compras urgentes começam direto aqui. Não presuma que\nexista solicitação por trás. Veja describe_purchase_process().",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "purchase_order_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "ID de um pedido específico (retorna só esse, ignorando os demais filtros)"
+        },
+        "start_date": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Data de início (yyyy-MM-dd; use yyyyMMdd sem hífens se o cliente MCP truncar o formato com hífen)"
+        },
+        "end_date": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Data de fim (mesmas observações de formato de start_date)"
+        },
+        "status": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "PENDING, PARTIALLY_DELIVERED, FULLY_DELIVERED ou CANCELED"
+        },
+        "authorized": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "filtra por pedidos autorizados (True) ou não (False)"
+        },
+        "supplier_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "ID do fornecedor"
+        },
+        "building_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "ID da obra"
+        },
+        "buyer_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "ID do comprador (usuário do Sienge)"
+        },
+        "status_approval": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "DISAPPROVED ou APPROVED"
+        },
+        "consistency": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "IN_INCLUSION, CONSISTENT ou INCONSISTENT"
+        },
+        "limit": {
+          "default": 100,
+          "type": "integer",
+          "description": "máximo de resultados (padrão 100, teto 200)"
+        },
+        "offset": {
+          "default": 0,
+          "type": "integer",
+          "description": "deslocamento para paginação"
+        }
+      },
+      "type": "object"
+    },
+    "tags": [
+      "compras"
+    ]
+  },
+  {
+    "name": "get_sienge_purchase_order_items",
+    "description": "Lista os itens de um pedido de compra específico.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "order_id": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "order_id"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "compras_api"
+    ]
+  },
+  {
+    "name": "get_sienge_purchase_order_item_delivery_schedules",
+    "description": "Lista as previsões de entrega de um item de pedido de compra.\n\nÉ daqui que sai o `deliveryScheduleNumber`, o número que falta para lançar\numa nota fiscal: o vínculo entre nota e pedido não é feito pelo pedido, e\nsim pela ENTREGA PREVISTA de um item dele. Ver describe_purchase_process().\n\nCada entrega traz `sheduledQuantity` (prevista), `deliveredQuantity` (já\nentregue) e `openQuantity` (saldo) — use o saldo para saber o que ainda\nestá pendente de faturamento. Os dois primeiros campos vêm com essa grafia\nda própria API, sem o \"c\" de scheduled.\n\nPara montar o item da nota você precisa de purchaseOrderId, itemNumber\n(de get_sienge_purchase_order_items) e deliveryScheduleNumber (daqui).",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "purchase_order_id": {
+          "type": "integer"
+        },
+        "item_number": {
+          "type": "integer"
+        },
+        "limit": {
+          "default": 100,
+          "type": "integer"
+        },
+        "offset": {
+          "default": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "purchase_order_id",
+        "item_number"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "compras_api"
+    ]
+  },
+  {
+    "name": "get_sienge_purchase_order_totalization",
+    "description": "Consulta a totalização de um pedido de compra.\n\nÚtil na ETAPA 6, para conferir a nota fiscal contra o pedido antes de\nlançar. Divergência entre os dois interrompe o processo e volta para\ntratativa humana — não ajuste valores para fazer fechar.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "purchase_order_id": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "purchase_order_id"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "compras_api"
+    ]
+  },
+  {
+    "name": "get_sienge_purchase_order_item",
+    "description": "Consulta um item específico de um pedido de compra.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "purchase_order_id": {
+          "type": "integer"
+        },
+        "item_number": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "purchase_order_id",
+        "item_number"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "compras_api"
+    ]
+  },
+  {
+    "name": "get_sienge_purchase_order_item_buildings_appropriations",
+    "description": "Lista as apropriações de obra de um item do pedido — como o custo é rateado entre obras/unidades.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "purchase_order_id": {
+          "type": "integer"
+        },
+        "item_number": {
+          "type": "integer"
+        },
+        "limit": {
+          "default": 100,
+          "type": "integer"
+        },
+        "offset": {
+          "default": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "purchase_order_id",
+        "item_number"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "compras_api"
+    ]
+  },
+  {
+    "name": "get_sienge_purchase_order_item_purchase_requests",
+    "description": "Lista os itens de solicitação de compra atendidos por um item do pedido.\n\nÉ o caminho de volta da ETAPA 4 para a ETAPA 1: mostra de quais\nsolicitações aquele item do pedido nasceu. Retorno vazio é normal —\ncompras urgentes começam direto no pedido, sem solicitação.\n\nO spec define limit padrão 10 para este endpoint, não 100.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "purchase_order_id": {
+          "type": "integer"
+        },
+        "item_number": {
+          "type": "integer"
+        },
+        "limit": {
+          "default": 10,
+          "type": "integer"
+        },
+        "offset": {
+          "default": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "purchase_order_id",
+        "item_number"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "compras_api"
+    ]
+  },
+  {
+    "name": "get_sienge_purchase_order_direct_billing",
+    "description": "Consulta o faturamento direto simples de um pedido de compra.\n\nNão retorna faturamento direto com desconto em medição.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "purchase_order_id": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "purchase_order_id"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "compras_api"
+    ]
+  },
+  {
+    "name": "disapprove_purchase_order",
+    "description": "Reprova um pedido de compra pendente de autorização. ETAPA 5 do processo.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "purchase_order_id": {
+          "type": "integer"
+        },
+        "observation": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "justificativa, limitada a 300 caracteres"
+        },
+        "confirm": {
+          "default": false,
+          "type": "boolean",
+          "description": "interrompe a compra — só executa com confirm=True. Sem ele,\ndevolve uma prévia para conferência com o usuário."
+        }
+      },
+      "required": [
+        "purchase_order_id"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "compras"
+    ]
+  },
+  {
+    "name": "get_sienge_purchase_order_attachments",
+    "description": "Lista os anexos de um pedido de compra.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "purchase_order_id": {
+          "type": "integer"
+        },
+        "limit": {
+          "default": 100,
+          "type": "integer"
+        },
+        "offset": {
+          "default": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "purchase_order_id"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "compras_api"
+    ]
+  },
+  {
+    "name": "download_sienge_purchase_order_attachment",
+    "description": "Baixa um anexo de pedido de compra, retornando o conteúdo em Base64.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "purchase_order_id": {
+          "type": "integer"
+        },
+        "attachment_number": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "purchase_order_id",
+        "attachment_number"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "compras_api"
+    ]
+  },
+  {
+    "name": "insert_sienge_purchase_order_attachment",
+    "description": "Anexa um arquivo a um pedido de compra.\n\nInforme file_path (caminho nos diretórios permitidos ou URL pública) OU o\npar file_name + file_content_base64.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "purchase_order_id": {
+          "type": "integer"
+        },
+        "description": {
+          "type": "string"
+        },
+        "file_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "file_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "file_content_base64": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "content_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "confirm": {
+          "default": false,
+          "type": "boolean",
+          "description": "envia arquivo ao ERP — só executa com confirm=True.\nSem ele, devolve uma prévia para conferência."
+        }
+      },
+      "required": [
+        "purchase_order_id",
+        "description"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "compras_api"
+    ]
+  },
+  {
+    "name": "get_sienge_supplier_evaluation_criteria",
+    "description": "Lista os critérios disponíveis para avaliar o fornecedor de um pedido.\n\nRetorna os critérios com seus pesos e o intervalo válido das notas\n(rangeMin/rangeMax). Consulte antes de avaliar: os ids dos critérios e a\nfaixa de notas vêm daqui.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "purchase_order_id": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "purchase_order_id"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "compras_api"
+    ]
+  },
+  {
+    "name": "evaluate_sienge_purchase_order_supplier",
+    "description": "Registra uma avaliação do fornecedor no pedido de compra.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "purchase_order_id": {
+          "type": "integer"
+        },
+        "evaluated_criteria": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "type": "array",
+          "description": "[{\"criterionId\": int, \"value\": float}] — os ids e a\nfaixa válida de value vêm de get_sienge_supplier_evaluation_criteria()."
+        },
+        "notes": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "observação da avaliação"
+        },
+        "replace_latest": {
+          "default": false,
+          "type": "boolean",
+          "description": "com False cadastra uma nova avaliação; com True\nSOBRESCREVE a última avaliação existente, se houver."
+        },
+        "confirm": {
+          "default": false,
+          "type": "boolean",
+          "description": "com replace_latest=True SOBRESCREVE a última avaliação — só executa com confirm=True.\nSem ele, devolve uma prévia para conferência."
+        }
+      },
+      "required": [
+        "purchase_order_id",
+        "evaluated_criteria"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "compras_api"
+    ]
+  },
+  {
+    "name": "get_sienge_purchase_order_analysis_pdf",
+    "description": "Gera o relatório de ANÁLISE do pedido de compra, em PDF (Base64).\n\nATENÇÃO: é um documento interno de conferência, NÃO a via do pedido para\nenviar ao fornecedor. A API não expõe geração do documento do pedido para\nenvio — ver describe_purchase_process(), seção limitacoes. Não ofereça\neste relatório como substituto sem explicar a diferença.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "purchase_order_id": {
+          "type": "integer"
+        },
+        "print_authorization_observations": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "print_orders_with_same_appropriated_items": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "print_only_invoices_with_outstanding_installments": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "print_detailed_invoice_amounts": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "print_appropriation_quantity": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "purchase_order_id"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "compras_api"
+    ]
+  },
+  {
+    "name": "get_sienge_purchase_request",
+    "description": "Consulta uma solicitação de compra específica pelo id.\n\nTraz o cabeçalho (obra, solicitante, data, situação). Para os insumos, use\nget_sienge_purchase_request_items().",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "purchase_request_id": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "purchase_request_id"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "compras_api"
+    ]
+  },
+  {
+    "name": "get_sienge_purchase_request_item_buildings_appropriations",
+    "description": "Lista as apropriações de obra de um item de solicitação — como o custo é rateado.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "purchase_request_id": {
+          "type": "integer"
+        },
+        "purchase_request_item_number": {
+          "type": "integer"
+        },
+        "limit": {
+          "default": 100,
+          "type": "integer"
+        },
+        "offset": {
+          "default": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "purchase_request_id",
+        "purchase_request_item_number"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "compras_api"
+    ]
+  },
+  {
+    "name": "get_sienge_purchase_request_item_delivery_requirements",
+    "description": "Lista as necessidades de entrega de um item de solicitação de compra.\n\nÉ a data em que o solicitante precisa do insumo, com a quantidade\nnecessária e quanto já foi atendido. Não confundir com as previsões de\nentrega do PEDIDO (get_sienge_purchase_order_item_delivery_schedules), que\né o que o fornecedor se comprometeu a entregar.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "purchase_request_id": {
+          "type": "integer"
+        },
+        "purchase_request_item_number": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "purchase_request_id",
+        "purchase_request_item_number"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "compras_api"
+    ]
+  },
+  {
+    "name": "get_sienge_purchase_request_attachments",
+    "description": "Lista os anexos de uma solicitação de compra.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "purchase_request_id": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "purchase_request_id"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "compras_api"
+    ]
+  },
+  {
+    "name": "download_sienge_purchase_request_attachment",
+    "description": "Baixa um anexo de solicitação de compra, retornando o conteúdo em Base64.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "purchase_request_id": {
+          "type": "integer"
+        },
+        "attachment_number": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "purchase_request_id",
+        "attachment_number"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "compras_api"
+    ]
+  },
+  {
+    "name": "insert_sienge_purchase_request_attachment",
+    "description": "Anexa um arquivo a uma solicitação de compra (limite de 70 MB).\n\nInforme file_path (caminho nos diretórios permitidos ou URL pública) OU o\npar file_name + file_content_base64.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "purchase_request_id": {
+          "type": "integer"
+        },
+        "description": {
+          "type": "string"
+        },
+        "file_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "file_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "file_content_base64": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "content_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "confirm": {
+          "default": false,
+          "type": "boolean",
+          "description": "envia arquivo ao ERP — só executa com confirm=True.\nSem ele, devolve uma prévia para conferência."
+        }
+      },
+      "required": [
+        "purchase_request_id",
+        "description"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "compras_api"
+    ]
+  },
+  {
+    "name": "get_sienge_purchase_invoice_items",
+    "description": "Lista os itens de uma nota fiscal de compra (purchase-invoices-v1).\n\nNão confundir com get_sienge_invoice_items(), que é a leitura em volume via\nAPI bulk-data, por empresa e período.\n\nOs itens NÃO trazem o pedido de origem — a API não devolve purchaseOrderId\naqui. Para saber de qual pedido veio cada item, use\nget_sienge_purchase_order_deliveries_attended().",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "sequential_number": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "sequential_number"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "compras_api"
+    ]
+  },
+  {
+    "name": "get_sienge_purchase_invoice_item_buildings_appropriations",
+    "description": "Lista as apropriações de obra de um item de nota fiscal — como o custo é rateado.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "sequential_number": {
+          "type": "integer"
+        },
+        "item_number": {
+          "type": "integer"
+        },
+        "limit": {
+          "default": 100,
+          "type": "integer"
+        },
+        "offset": {
+          "default": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "sequential_number",
+        "item_number"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "compras_api"
+    ]
+  },
+  {
+    "name": "get_sienge_purchase_invoices",
+    "description": "Lista notas fiscais de compra, com filtros combináveis.\n\nstart_date/end_date filtram pela data de EMISSÃO (yyyy-MM-dd).\nPara uma NF específica pelo número sequencial interno, use\nget_purchase_invoice_by_sequential().",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "company_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "supplier_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "document_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "series": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "number": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "start_date": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "end_date": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "limit": {
+          "default": 100,
+          "type": "integer"
+        },
+        "offset": {
+          "default": 0,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "tags": [
+      "compras_api"
+    ]
+  },
+  {
+    "name": "create_sienge_purchase_invoice",
+    "description": "Cadastra o cabeçalho de uma nota fiscal de compra e devolve o sequentialNumber.\n\nETAPA 6 do processo de compras — entrada da nota fiscal. Pressupõe que\nalguém já conferiu FISICAMENTE a quantidade e a qualidade do que chegou e\nvalidou a nota contra o pedido de compra. Essa conferência acontece fora do\nsistema: confirme que foi feita antes de lançar, e não presuma que foi.\n\nDepois use add_items_to_purchase_invoice() para vincular os itens. Segundo\na API, series, movement_type_id, movement_date e issue_date assumem os\npadrões do Sienge quando omitidos.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "document_id": {
+          "type": "string"
+        },
+        "number": {
+          "type": "string"
+        },
+        "supplier_id": {
+          "type": "integer"
+        },
+        "company_id": {
+          "type": "integer"
+        },
+        "movement_type_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "movement_date": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "issue_date": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "series": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "notes": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "confirm": {
+          "default": false,
+          "type": "boolean",
+          "description": "cadastra documento fiscal — só executa com confirm=True.\nSem ele, devolve uma prévia para conferência."
+        }
+      },
+      "required": [
+        "document_id",
+        "number",
+        "supplier_id",
+        "company_id"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "compras_api"
+    ]
+  },
+  {
+    "name": "add_items_to_purchase_invoice",
+    "description": "Vincula itens a uma nota fiscal existente, via entregas previstas de pedidos de compra.\n\nETAPA 6 do processo. É este passo que faz o Sienge gerar automaticamente o\ntítulo no contas a pagar: a partir daqui a compra virou dívida.\n\nDivergência entre a nota e o pedido — quantidade, preço ou fornecedor —\ninterrompe o processo e volta para tratativa humana. Não ajuste números\npara fazer fechar.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "invoice_sequential_number": {
+          "type": "integer"
+        },
+        "deliveries_order": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "type": "array",
+          "description": "[{\"purchaseOrderId\": int, \"itemNumber\": int,\n\"deliveryScheduleNumber\": int, \"deliveredQuantity\": float}] — os\nquatro campos são obrigatórios; \"keepBalance\" é opcional."
+        },
+        "copy_notes_purchase_orders": {
+          "default": true,
+          "type": "boolean"
+        },
+        "copy_attachments_purchase_orders": {
+          "default": true,
+          "type": "boolean"
+        },
+        "copy_notes_resources": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "confirm": {
+          "default": false,
+          "type": "boolean",
+          "description": "gera o título no contas a pagar: a compra vira dívida aqui — só executa com confirm=True.\nSem ele, devolve uma prévia para conferência."
+        }
+      },
+      "required": [
+        "invoice_sequential_number",
+        "deliveries_order"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "compras_api"
+    ]
+  },
+  {
+    "name": "validate_purchase_order_company",
+    "description": "Confere se a empresa informada é compatível com o pedido de compra, antes de criar a NF (evita HTTP 422).",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "purchase_order_id": {
+          "type": "integer"
+        },
+        "company_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "purchase_order_id"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "compras"
+    ]
+  },
+  {
+    "name": "authorize_purchase_order",
+    "description": "Autoriza um pedido de compra pendente de autorização.\n\nETAPA 5 do processo de compras — assume compromisso de compra.\n\nDentro do ERP, aprovar dispara e-mail ao fornecedor e aos destinatários\nconfigurados no centro de custo. NÃO está verificado se a aprovação via API\ndispara a mesma notificação: não afirme ao usuário que o e-mail saiu nem\nque deixou de sair.\n\npurchase_order_id segue o parâmetro 415 do Sienge: sequencial contínuo\nsimples (ex: 123) ou sequencial anual de 8 dígitos, onde os 2 primeiros\nsão o ano (ex: 19000123 para \"123/19\").",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "purchase_order_id": {
+          "type": "integer",
+          "description": "sequencial do pedido a autorizar"
+        },
+        "confirm": {
+          "default": false,
+          "type": "boolean",
+          "description": "assume um compromisso de compra — só executa com confirm=True.\nSem ele, devolve uma prévia para conferência com o usuário."
+        }
+      },
+      "required": [
+        "purchase_order_id"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "compras"
+    ]
+  },
+  {
+    "name": "get_purchase_invoice_by_sequential",
+    "description": "Busca uma nota fiscal de compra pelo sequential number.\n\nsequential_number é o identificador interno gerado pelo Sienge ao criar\na NF — não é o número da NF que aparece no DANFE.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "sequential_number": {
+          "type": "integer",
+          "description": "identificador interno gerado pelo Sienge, não o número do DANFE"
+        }
+      },
+      "required": [
+        "sequential_number"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "compras_api"
+    ]
+  },
+  {
+    "name": "get_sienge_invoice_items",
+    "description": "Lê itens de notas fiscais via API bulk-data (/bulk-data/v1/invoice-itens).",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "company_id": {
+          "type": "integer",
+          "description": "Código da empresa"
+        },
+        "start_date": {
+          "type": "string",
+          "description": "Data de início de entrada/saída da NF (yyyy-MM-dd)"
+        },
+        "end_date": {
+          "type": "string",
+          "description": "Data de fim de entrada/saída da NF (yyyy-MM-dd)"
+        },
+        "show_cost_center_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": "N",
+          "description": "\"S\" para incluir o centro de custo das apropriações\nfinanceiras da nota no resultado, \"N\" para omitir (padrão)"
+        }
+      },
+      "required": [
+        "company_id",
+        "start_date",
+        "end_date"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "compras_api"
+    ]
+  },
+  {
+    "name": "get_sienge_purchase_requests",
+    "description": "Busca itens de solicitações de compra, com filtros combináveis.\n\nETAPA 1 do processo de compras. Nesta etapa NÃO HÁ PREÇO: a solicitação\nregistra o que se precisa (insumo, quantidade, unidade), não quanto custa —\no preço só entra na cotação ou no pedido. O campo estimatedPrice, quando\npreenchido, é estimativa do solicitante, não valor negociado.\n\nA API de solicitações não expõe listagem das solicitações em si — apenas\ndos itens delas. Para uma solicitação específica, use\nget_sienge_purchase_request_items(request_id).",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "building_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "requester_user": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "start_date": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "end_date": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "status": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "PENDING, PARTIALLY_ATTENDED, FULLY_ATTENDED ou CANCELED"
+        },
+        "authorized": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "limit": {
+          "default": 100,
+          "type": "integer"
+        },
+        "offset": {
+          "default": 0,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "tags": [
+      "compras"
+    ]
+  },
+  {
+    "name": "get_sienge_purchase_request_items",
+    "description": "Lista os itens de uma solicitação de compra específica.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "request_id": {
+          "type": "integer"
+        },
+        "limit": {
+          "default": 200,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "request_id"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "compras_api"
+    ]
+  },
+  {
+    "name": "create_sienge_purchase_request",
+    "description": "Cria uma solicitação de compra. ETAPA 1 do processo de compras.\n\nCria apenas o cabeçalho — os insumos entram depois por\nadd_items_to_purchase_request(). Nesta etapa NÃO há preço: a solicitação\nregistra o que se precisa, não quanto custa.\n\nCriar não aprova: a aprovação é a ETAPA 2, feita por outra pessoa em outro\nmomento, via authorize_purchase_request().",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "building_id": {
+          "type": "integer",
+          "description": "código da obra"
+        },
+        "requester_user": {
+          "type": "string",
+          "description": "usuário solicitante (usuário do Sienge)"
+        },
+        "request_date": {
+          "type": "string",
+          "description": "data da solicitação, yyyy-MM-dd"
+        },
+        "department_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "category_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "notes": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "observação, limitada a 400 caracteres"
+        },
+        "draft": {
+          "default": false,
+          "type": "boolean",
+          "description": "cria em modo rascunho"
+        },
+        "confirm": {
+          "default": false,
+          "type": "boolean",
+          "description": "cria registro no ERP — só executa com confirm=True.\nSem ele, devolve uma prévia para conferência."
+        }
+      },
+      "required": [
+        "building_id",
+        "requester_user",
+        "request_date"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "compras_api"
+    ]
+  },
+  {
+    "name": "add_items_to_purchase_request",
+    "description": "Adiciona insumos a uma solicitação de compra existente.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "purchase_request_id": {
+          "type": "integer"
+        },
+        "items": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "type": "array",
+          "description": "cada item exige productId, quantity, unitySymbol,\nbuildingsApropriations e deliveryRequirements.\n\nbuildingsApropriations: [{\"buildingUnitId\": int,\n    \"costEstimationItemReference\": str, \"percentage\": float}]\ndeliveryRequirements: [{\"requirementDate\": \"yyyy-MM-dd\",\n    \"requirementQuantity\": float}]\n\nAtenção à grafia buildingsApropriations, com um \"p\" só — é assim\nque a API declara o campo."
+        },
+        "confirm": {
+          "default": false,
+          "type": "boolean",
+          "description": "altera a solicitação — só executa com confirm=True.\nSem ele, devolve uma prévia para conferência."
+        }
+      },
+      "required": [
+        "purchase_request_id",
+        "items"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "compras_api"
+    ]
+  },
+  {
+    "name": "authorize_purchase_request",
+    "description": "Autoriza todos os itens de uma solicitação de compra. ETAPA 2 do processo.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "purchase_request_id": {
+          "type": "integer"
+        },
+        "confirm": {
+          "default": false,
+          "type": "boolean",
+          "description": "aprovação é ato de quem tem alçada — só executa com\nconfirm=True. Sem ele, devolve uma prévia para conferência."
+        }
+      },
+      "required": [
+        "purchase_request_id"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "compras"
+    ]
+  },
+  {
+    "name": "disapprove_purchase_request",
+    "description": "Reprova todos os itens de uma solicitação de compra.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "purchase_request_id": {
+          "type": "integer"
+        },
+        "confirm": {
+          "default": false,
+          "type": "boolean",
+          "description": "interrompe o processo de compra — só executa com confirm=True."
+        }
+      },
+      "required": [
+        "purchase_request_id"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "compras"
+    ]
+  },
+  {
+    "name": "authorize_purchase_request_items",
+    "description": "Autoriza um subconjunto de itens de uma solicitação, em lote.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "purchase_request_id": {
+          "type": "integer"
+        },
+        "item_numbers": {
+          "items": {
+            "type": "integer"
+          },
+          "type": "array",
+          "description": "números dos itens a autorizar"
+        },
+        "confirm": {
+          "default": false,
+          "type": "boolean",
+          "description": "aprovação é ato de quem tem alçada — só executa com confirm=True."
+        }
+      },
+      "required": [
+        "purchase_request_id",
+        "item_numbers"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "compras_api"
+    ]
+  },
+  {
+    "name": "authorize_purchase_request_item",
+    "description": "Autoriza um item específico de uma solicitação de compra.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "purchase_request_id": {
+          "type": "integer"
+        },
+        "purchase_request_item_number": {
+          "type": "integer"
+        },
+        "confirm": {
+          "default": false,
+          "type": "boolean",
+          "description": "aprovação é ato de quem tem alçada — só executa com confirm=True."
+        }
+      },
+      "required": [
+        "purchase_request_id",
+        "purchase_request_item_number"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "compras_api"
+    ]
+  },
+  {
+    "name": "disapprove_purchase_request_item",
+    "description": "Reprova um item específico de uma solicitação de compra.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "purchase_request_id": {
+          "type": "integer"
+        },
+        "purchase_request_item_number": {
+          "type": "integer"
+        },
+        "confirm": {
+          "default": false,
+          "type": "boolean",
+          "description": "interrompe o item no processo — só executa com confirm=True."
+        }
+      },
+      "required": [
+        "purchase_request_id",
+        "purchase_request_item_number"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "compras_api"
+    ]
+  },
+  {
+    "name": "get_sienge_purchase_order_deliveries_attended",
+    "description": "Lista as entregas já atendidas de pedidos de compra, filtrando por NF, pedido ou título.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "sequential_number": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "purchase_order_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "bill_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "limit": {
+          "default": 100,
+          "type": "integer"
+        },
+        "offset": {
+          "default": 0,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "tags": [
+      "compras_api"
+    ]
+  },
+  {
+    "name": "process_purchase_invoice_pipeline",
+    "description": "Orquestra o lançamento completo de uma nota fiscal de compra:\n1) cadastra (ou reaproveita) a NF; 2) vincula os itens via entregas de\npedidos; 3) localiza o título que o Sienge gerou; 4) ajusta as parcelas;\n5) anexa um arquivo ao título, tipicamente o DANFE.\n\nETAPA 6 do processo de compras. Pressupõe a conferência física do\nrecebimento e a validação da nota contra o pedido — ambas fora do sistema.\nConfirme que foram feitas antes de lançar. Lançar gera o título no contas\na pagar: a compra vira dívida aqui.\n\nAs etapas sem dados informados são puladas. A execução para na primeira\nfalha e o retorno traz `sequentialNumber` e `billId` mesmo assim, para\npermitir retomar em vez de repetir — repetir criaria uma nota duplicada.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "invoice": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "cabeçalho da NF (document_id, number, supplier_id, company_id\ne opcionais). Dispensável se sequential_number for informado."
+        },
+        "sequential_number": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "reaproveita uma NF existente e pula o cadastro"
+        },
+        "deliveries_order": {
+          "anyOf": [
+            {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "[{\"purchaseOrderId\", \"itemNumber\",\n\"deliveryScheduleNumber\", \"deliveredQuantity\"}]"
+        },
+        "installments": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "{\"dueDates\": [...], \"amounts\": [...]} ou\n{\"daysToDue\": [...], \"baseDate\": \"yyyy-MM-dd\", \"amounts\": [...]}"
+        },
+        "bill_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "título a complementar; descoberto automaticamente se omitido"
+        },
+        "attachment_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "caminho local (nos diretórios permitidos) ou URL pública"
+        },
+        "attachment_description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "attachment_file_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "attachment_file_content_base64": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "attachment_content_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "copy_notes_purchase_orders": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "copy_notes_resources": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "copy_attachments_purchase_orders": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "dry_run": {
+          "default": false,
+          "type": "boolean",
+          "description": "simula o fluxo inteiro sem emitir nenhuma escrita"
+        },
+        "confirm": {
+          "default": false,
+          "type": "boolean",
+          "description": "cria documento fiscal e altera valores a pagar — só executa\ncom confirm=True. Use dry_run=True para ver o plano antes."
+        }
+      },
+      "type": "object"
+    },
+    "tags": [
+      "compras"
+    ]
+  },
+  {
+    "name": "get_sienge_purchase_quotations",
+    "description": "Busca cotações de preço com suas negociações. ETAPA 3 do processo de compras.\n\nÉ a etapa em que o preço entra: antes dela, a solicitação tem só quantidade\ne unidade. Etapa OPCIONAL — nem todo pedido passou por cotação.\n\nInforme quotation_number OU o par start_date/end_date — o spec não aceita\nos dois juntos, e exige o período quando a cotação não é informada.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "quotation_number": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "supplier_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "buyer_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "start_date": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "end_date": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "authorized": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "status": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "NEGOTIATION_IN_PROGRESS, NEGOTIATION_CLOSED, ACQUISITION_FORWARDED\nou SENT_FOR_SERVICE"
+        },
+        "consistency": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "IN_INCLUSION, CONSISTENT ou INCONSISTENT"
+        },
+        "limit": {
+          "default": 100,
+          "type": "integer"
+        },
+        "offset": {
+          "default": 0,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "tags": [
+      "cotacoes"
+    ]
+  },
+  {
+    "name": "create_sienge_purchase_quotation",
+    "description": "Cria uma cotação de preço (só o cabeçalho); os itens entram depois.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "buyer_id": {
+          "type": "string"
+        },
+        "date": {
+          "type": "string"
+        },
+        "created_by": {
+          "type": "string"
+        },
+        "confirm": {
+          "default": false,
+          "type": "boolean",
+          "description": "cria registro no ERP — só executa com confirm=True.\nSem ele, devolve uma prévia para conferência."
+        }
+      },
+      "required": [
+        "buyer_id",
+        "date",
+        "created_by"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "cotacoes"
+    ]
+  },
+  {
+    "name": "add_item_to_purchase_quotation",
+    "description": "Cria um item avulso na cotação.\n\nPara cotar um item que já existe numa solicitação de compra, prefira\nadd_purchase_request_item_to_quotation(), que preserva o vínculo com a origem.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "purchase_quotation_id": {
+          "type": "integer"
+        },
+        "building_id": {
+          "type": "integer"
+        },
+        "product_id": {
+          "type": "integer"
+        },
+        "quantity": {
+          "type": "number"
+        },
+        "unity_symbol": {
+          "type": "string"
+        },
+        "delivery_requirements": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "type": "array",
+          "description": "[{\"requirementDate\": \"yyyy-MM-dd\", \"requirementQuantity\": float}]"
+        },
+        "buildings_apropriations": {
+          "anyOf": [
+            {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "detail_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "trademark_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "notes": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "confirm": {
+          "default": false,
+          "type": "boolean",
+          "description": "altera a cotação — só executa com confirm=True.\nSem ele, devolve uma prévia para conferência."
+        }
+      },
+      "required": [
+        "purchase_quotation_id",
+        "building_id",
+        "product_id",
+        "quantity",
+        "unity_symbol",
+        "delivery_requirements"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "cotacoes"
+    ]
+  },
+  {
+    "name": "add_purchase_request_item_to_quotation",
+    "description": "Gera um item de cotação a partir de uma entrega de item de solicitação (elo entre as etapas 1 e 3).",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "purchase_quotation_id": {
+          "type": "integer"
+        },
+        "purchase_request_id": {
+          "type": "integer"
+        },
+        "purchase_request_item_number": {
+          "type": "integer"
+        },
+        "delivery_requirement_number": {
+          "type": "integer"
+        },
+        "confirm": {
+          "default": false,
+          "type": "boolean",
+          "description": "altera a cotação — só executa com confirm=True.\nSem ele, devolve uma prévia para conferência."
+        }
+      },
+      "required": [
+        "purchase_quotation_id",
+        "purchase_request_id",
+        "purchase_request_item_number",
+        "delivery_requirement_number"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "cotacoes"
+    ]
+  },
+  {
+    "name": "add_supplier_to_quotation_item",
+    "description": "Inclui um fornecedor no item da cotação — define quem vai cotar aquele item.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "purchase_quotation_id": {
+          "type": "integer"
+        },
+        "purchase_quotation_item_number": {
+          "type": "integer"
+        },
+        "supplier_id": {
+          "type": "integer"
+        },
+        "confirm": {
+          "default": false,
+          "type": "boolean",
+          "description": "altera a cotação — só executa com confirm=True.\nSem ele, devolve uma prévia para conferência."
+        }
+      },
+      "required": [
+        "purchase_quotation_id",
+        "purchase_quotation_item_number",
+        "supplier_id"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "cotacoes"
+    ]
+  },
+  {
+    "name": "open_quotation_negotiation",
+    "description": "Abre uma rodada de negociação com um fornecedor.\n\nUma negociação é uma rodada de proposta. O mesmo fornecedor pode ter várias,\ne a última é a que vale. A rodada nasce vazia: preencha com\nupdate_quotation_negotiation() e update_quotation_negotiation_item().",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "purchase_quotation_id": {
+          "type": "integer"
+        },
+        "supplier_id": {
+          "type": "integer"
+        },
+        "confirm": {
+          "default": false,
+          "type": "boolean",
+          "description": "cria uma rodada de negociação — só executa com confirm=True.\nSem ele, devolve uma prévia para conferência."
+        }
+      },
+      "required": [
+        "purchase_quotation_id",
+        "supplier_id"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "cotacoes"
+    ]
+  },
+  {
+    "name": "update_quotation_negotiation",
+    "description": "Atualiza as condições gerais de uma rodada de negociação.\n\nTrata o que vale para a proposta inteira — frete, desconto global, validade,\nvendedor, condições de pagamento. Preços item a item ficam em\nupdate_quotation_negotiation_item().",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "purchase_quotation_id": {
+          "type": "integer"
+        },
+        "supplier_id": {
+          "type": "integer"
+        },
+        "negotiation_number": {
+          "type": "integer"
+        },
+        "supplier_answer_date": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "validity": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "seller": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "discount": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "freight_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "NONE, INCLUDED ou PAID"
+        },
+        "freight_type_for_generated_purchase_order": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "PROPORTIONAL ou TOTAL"
+        },
+        "freight_price": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "value_other_expenses": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "apply_ipi_freight": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "internal_notes": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "supplier_notes": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "payment_terms": {
+          "anyOf": [
+            {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "confirm": {
+          "default": false,
+          "type": "boolean",
+          "description": "altera condições comerciais — só executa com confirm=True.\nSem ele, devolve uma prévia para conferência."
+        }
+      },
+      "required": [
+        "purchase_quotation_id",
+        "supplier_id",
+        "negotiation_number"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "cotacoes"
+    ]
+  },
+  {
+    "name": "update_quotation_negotiation_item",
+    "description": "Define o preço de um item dentro de uma rodada de negociação.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "purchase_quotation_id": {
+          "type": "integer"
+        },
+        "supplier_id": {
+          "type": "integer"
+        },
+        "negotiation_number": {
+          "type": "integer"
+        },
+        "quotation_item_number": {
+          "type": "integer"
+        },
+        "item": {
+          "additionalProperties": true,
+          "type": "object",
+          "description": "o spec exige TODOS estes campos, mesmo zerados — quotedQuantity,\nnegotiatedQuantity, unitPrice, discount, discountPercentage,\nincreasePercentage, ipiTaxPercentage, issTaxPercentage,\nicmsTaxPercentage, freightUnitPrice e selectedOption.\nselectedOption marca o item como a opção escolhida para compra."
+        },
+        "confirm": {
+          "default": false,
+          "type": "boolean",
+          "description": "define preço e pode marcar a opção escolhida para compra — só executa com confirm=True.\nSem ele, devolve uma prévia para conferência."
+        }
+      },
+      "required": [
+        "purchase_quotation_id",
+        "supplier_id",
+        "negotiation_number",
+        "quotation_item_number",
+        "item"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "cotacoes"
+    ]
+  },
+  {
+    "name": "authorize_purchase_quotation_negotiation",
+    "description": "Autoriza a última rodada de negociação de um fornecedor. ETAPA 3 do processo.\n\nAge sempre sobre a negociação mais recente daquele fornecedor — não é\npossível autorizar uma rodada anterior. Autorizar define o preço e o\nfornecedor que seguirão para o pedido de compra.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "purchase_quotation_id": {
+          "type": "integer"
+        },
+        "supplier_id": {
+          "type": "integer"
+        },
+        "confirm": {
+          "default": false,
+          "type": "boolean",
+          "description": "escolhe fornecedor e preço da compra — só executa com\nconfirm=True. Sem ele, devolve uma prévia para conferência."
+        }
+      },
+      "required": [
+        "purchase_quotation_id",
+        "supplier_id"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "cotacoes"
+    ]
+  },
+  {
+    "name": "get_sienge_quotation_comparison_map",
+    "description": "Gera o mapa comparativo das cotações e devolve a URL do PDF.\n\nRetorna `urlReport` — um endereço do próprio Sienge de onde o arquivo pode\nser baixado —, não o conteúdo do PDF.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "start_date": {
+          "type": "string"
+        },
+        "end_date": {
+          "type": "string"
+        },
+        "print_general_data": {
+          "default": true,
+          "type": "boolean"
+        },
+        "purchase_quotation_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "supplier_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "buyer_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "building_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "short_print": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "highlight_highest_and_lowest_price": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "highlight_chosen_supplier": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "print_quoted_price": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "start_date",
+        "end_date"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "cotacoes"
+    ]
+  },
+  {
+    "name": "get_sienge_accounts_receivable",
+    "description": "Busca parcelas de contas a receber via API bulk-data (/income).",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "start_date": {
+          "type": "string",
+          "description": "Data de início do período (yyyy-MM-dd)"
+        },
+        "end_date": {
+          "type": "string",
+          "description": "Data de fim do período (yyyy-MM-dd)"
+        },
+        "selection_type": {
+          "default": "D",
+          "type": "string",
+          "description": "I=emissão, D=vencimento, P=pagamento, B=competência — padrão D"
+        },
+        "company_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Código da empresa"
+        },
+        "cost_centers_id": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Lista de códigos de centro de custo"
+        },
+        "correction_indexer_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Código do indexador de correção"
+        },
+        "correction_date": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Data para correção do indexador (yyyy-MM-dd)"
+        },
+        "change_start_date": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Data inicial de alteração (yyyy-MM-dd)"
+        },
+        "completed_bills": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "\"S\" para filtrar apenas títulos completos"
+        },
+        "origins_ids": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Códigos dos módulos de origem (CR, CO, ME, CA, CI, AR, SC, LO, NE, NS, AC, NF)"
+        },
+        "bearers_id_in": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Restringe a parcelas com esses códigos de portador"
+        },
+        "bearers_id_not_in": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Exclui parcelas com esses códigos de portador"
+        }
+      },
+      "required": [
+        "start_date",
+        "end_date"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "financeiro"
+    ]
+  },
+  {
+    "name": "get_sienge_accounts_receivable_by_bills",
+    "description": "Busca parcelas de contas a receber para uma lista específica de títulos.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "bills_ids": {
+          "items": {
+            "type": "integer"
+          },
+          "type": "array",
+          "description": "IDs dos títulos a receber"
+        },
+        "correction_indexer_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Código do indexador de correção"
+        },
+        "correction_date": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Data para correção do indexador (yyyy-MM-dd)"
+        }
+      },
+      "required": [
+        "bills_ids"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "financeiro"
+    ]
+  },
+  {
+    "name": "get_sienge_bills",
+    "description": "Busca títulos a pagar (bill-debt-v1 /bills), filtrando por data de EMISSÃO.\n\nEste endpoint pode não estar habilitado em todas as instâncias do Sienge\n(retorna 404 nesse caso).",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "start_date": {
+          "type": "string",
+          "description": "Data inicial de emissão (yyyy-MM-dd)"
+        },
+        "end_date": {
+          "type": "string",
+          "description": "Data final de emissão (yyyy-MM-dd)"
+        },
+        "debtor_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Código da empresa cadastrada no Sienge"
+        },
+        "creditor_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Código do credor cadastrado no Sienge"
+        },
+        "cost_center_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Código do centro de custo cadastrado no Sienge"
+        },
+        "documents_identification_id": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Códigos do documento (máx 4)"
+        },
+        "document_number": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Número do documento vinculado ao título (máx 20 caracteres)"
+        },
+        "status": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "S=Completo, N=Incompleto, I=Em inclusão"
+        },
+        "origin_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Código de origem (AC, RA, AI, CO, CF, CP, ME, MO, DV, RF, FP, FE, GI, LO, SE)"
+        },
+        "limit": {
+          "default": 100,
+          "type": "integer",
+          "description": "máximo de resultados (padrão 100, teto 200)"
+        },
+        "offset": {
+          "default": 0,
+          "type": "integer",
+          "description": "deslocamento para paginação"
+        }
+      },
+      "required": [
+        "start_date",
+        "end_date"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "financeiro"
+    ]
+  },
+  {
+    "name": "get_sienge_accounts_payable_by_bills",
+    "description": "Busca parcelas do CONTAS A PAGAR de títulos específicos (bulk-data /outcome/by-bills).\n\n⚠️ Consome cota da API bulk-data. Quando você já sabe quais títulos quer,\neste é o caminho mais econômico: independe de período e evita varrer um\nintervalo inteiro para depois filtrar.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "bills_ids": {
+          "items": {
+            "type": "integer"
+          },
+          "type": "array",
+          "description": "ids dos títulos a consultar"
+        },
+        "correction_indexer_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "correction_date": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "with_authorizations": {
+          "default": false,
+          "type": "boolean",
+          "description": "traz as autorizações de pagamento (aumenta o volume)"
+        },
+        "with_bank_movements": {
+          "default": false,
+          "type": "boolean",
+          "description": "traz as movimentações bancárias (aumenta o volume)"
+        }
+      },
+      "required": [
+        "bills_ids"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "financeiro"
+    ]
+  },
+  {
+    "name": "search_sienge_financial_data",
+    "description": "Cruza contas a receber e a pagar num único resultado, filtrando por faixa de datas\ne, opcionalmente, por valor e por nome de cliente/credor.\n\nEm ambas as branches o filtro de data incide sobre o VENCIMENTO, não a emissão:\n- receivable: bulk-data /income, selectionType=\"D\".\n- payable: bulk-data /outcome, selectionType=\"D\".",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "period_start": {
+          "type": "string",
+          "description": "início do intervalo de vencimento, yyyy-MM-dd (ex: 2025-12-01)"
+        },
+        "period_end": {
+          "type": "string",
+          "description": "fim do intervalo de vencimento, yyyy-MM-dd (ex: 2025-12-31)"
+        },
+        "search_type": {
+          "default": "both",
+          "type": "string",
+          "description": "restringe a busca a \"receivable\", \"payable\" ou \"both\" (padrão)"
+        },
+        "amount_min": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "descarta lançamentos abaixo desse valor"
+        },
+        "amount_max": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "descarta lançamentos acima desse valor"
+        },
+        "customer_creditor_search": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "filtra pelo nome do cliente ou credor"
+        }
+      },
+      "required": [
+        "period_start",
+        "period_end"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "financeiro"
+    ]
+  },
+  {
+    "name": "get_sienge_dashboard_summary",
+    "description": "Monta um resumo rápido do Sienge: status da conexão, amostra de clientes, projetos e títulos recentes.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {},
+      "type": "object"
+    },
+    "tags": [
+      "financeiro"
+    ]
+  },
+  {
+    "name": "create_purchase_invoice_simple",
+    "description": "Cria uma nota fiscal de compra recebendo os campos individualmente\n(em vez de um payload completo). Depois de criar, use\nadd_items_to_purchase_invoice() para vincular os itens.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "document_id": {
+          "type": "string"
+        },
+        "number": {
+          "type": "string"
+        },
+        "supplier_id": {
+          "type": "integer"
+        },
+        "company_id": {
+          "type": "integer"
+        },
+        "movement_type_id": {
+          "type": "integer"
+        },
+        "movement_date": {
+          "type": "string"
+        },
+        "issue_date": {
+          "type": "string"
+        },
+        "series": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "notes": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "document_id",
+        "number",
+        "supplier_id",
+        "company_id",
+        "movement_type_id",
+        "movement_date",
+        "issue_date"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "compras",
+      "financeiro"
+    ]
+  },
+  {
+    "name": "ap_update_auto_bill_installments",
+    "description": "Atualiza as parcelas do título que o Sienge cria automaticamente ao lançar uma NF.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "sequential_number": {
+          "type": "integer"
+        },
+        "bill_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "due_dates": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "days_to_due": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "base_date": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "amounts": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "sequential_number"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "financeiro"
+    ]
+  },
+  {
+    "name": "ap_finalize_bill",
+    "description": "Orquestra PATCH do título, upload de anexo e auditoria final em uma única chamada.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "bill_id": {
+          "type": "integer"
+        },
+        "patch_body": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "attachment": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "audit": {
+          "default": true,
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "bill_id"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "financeiro"
+    ]
+  },
+  {
+    "name": "ap_audit_bill_completeness",
+    "description": "Audita um título: confere se o valor total bate com a soma das parcelas e se há anexos.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "bill_id": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "bill_id"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "financeiro"
+    ]
+  },
+  {
+    "name": "get_supply_contracts_all",
+    "description": "Lista contratos de suprimentos dentro de um período.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "contract_start_date": {
+          "type": "string",
+          "description": "Início do período do contrato (yyyy-MM-dd)"
+        },
+        "contract_end_date": {
+          "type": "string",
+          "description": "Fim do período do contrato (yyyy-MM-dd)"
+        },
+        "company_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Código da empresa"
+        },
+        "building_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Código da obra"
+        },
+        "limit": {
+          "default": 100,
+          "type": "integer",
+          "description": "máximo de resultados (padrão 100, teto 200)"
+        },
+        "offset": {
+          "default": 0,
+          "type": "integer",
+          "description": "deslocamento para paginação"
+        },
+        "status_approval": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "D=DISAPPROVED, A=APPROVED"
+        },
+        "authorization": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "T=Todos, S=Reprovados, A=Aprovados, N=Aguardando"
+        },
+        "consistency": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "T=Todos, S=Consistente, N=Inconsistente, I=Inclusão"
+        }
+      },
+      "required": [
+        "contract_start_date",
+        "contract_end_date"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "contratos"
+    ]
+  },
+  {
+    "name": "get_supply_contract",
+    "description": "Busca um contrato de suprimentos específico, identificado por documento + número.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "document_id": {
+          "type": "string"
+        },
+        "contract_number": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "document_id",
+        "contract_number"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "contratos"
+    ]
+  },
+  {
+    "name": "get_supply_contract_attachments_all",
+    "description": "Lista os anexos de um contrato de suprimentos.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "document_id": {
+          "type": "string"
+        },
+        "contract_number": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "document_id",
+        "contract_number"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "contratos"
+    ]
+  },
+  {
+    "name": "get_supply_contract_attachment",
+    "description": "Baixa um anexo específico de um contrato de suprimentos, retornando o conteúdo em Base64.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "document_id": {
+          "type": "string"
+        },
+        "contract_number": {
+          "type": "string"
+        },
+        "contract_attachment_number": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "document_id",
+        "contract_number",
+        "contract_attachment_number"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "contratos"
+    ]
+  },
+  {
+    "name": "post_supply_contract_attachment",
+    "description": "Envia um anexo para um contrato de suprimentos (multipart/form-data, limite de 70 MB).",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "document_id": {
+          "type": "string",
+          "description": "Id do documento (ex: \"CT\")"
+        },
+        "contract_number": {
+          "type": "string",
+          "description": "Número do contrato"
+        },
+        "description": {
+          "type": "string",
+          "description": "Descrição do anexo (máx. 500 caracteres)"
+        },
+        "file_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Caminho local do arquivo a enviar"
+        },
+        "file_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Nome do arquivo (obrigatório junto de file_content_base64)"
+        },
+        "file_content_base64": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Conteúdo do arquivo em Base64"
+        },
+        "content_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "MIME type (ex: \"application/pdf\")"
+        }
+      },
+      "required": [
+        "document_id",
+        "contract_number",
+        "description"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "contratos"
+    ]
+  },
+  {
+    "name": "get_supply_contract_buildings",
+    "description": "Lista as obras (e respectivas unidades construtivas) vinculadas a um contrato.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "document_id": {
+          "type": "string"
+        },
+        "contract_number": {
+          "type": "string"
+        },
+        "limit": {
+          "default": 100,
+          "type": "integer"
+        },
+        "offset": {
+          "default": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "document_id",
+        "contract_number"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "contratos"
+    ]
+  },
+  {
+    "name": "get_supply_contract_addenda",
+    "description": "Lista os aditivos de obra de um contrato de suprimentos.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "document_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Id do documento (ex: \"CT\")"
+        },
+        "contract_number": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Número do contrato"
+        },
+        "building_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Código da obra"
+        },
+        "addendum_number": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Número do aditivo"
+        },
+        "addendum_start_date": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Início do período do aditivo (yyyy-MM-dd)"
+        },
+        "addendum_end_date": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Fim do período do aditivo (yyyy-MM-dd)"
+        },
+        "limit": {
+          "default": 100,
+          "type": "integer",
+          "description": "máximo de resultados (padrão 100, teto 200)"
+        },
+        "offset": {
+          "default": 0,
+          "type": "integer",
+          "description": "deslocamento para paginação"
+        }
+      },
+      "type": "object"
+    },
+    "tags": [
+      "contratos"
+    ]
+  },
+  {
+    "name": "get_supply_contract_addendum_items",
+    "description": "Lista os itens de um aditivo de obra de um contrato de suprimentos.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "document_id": {
+          "type": "string"
+        },
+        "contract_number": {
+          "type": "string"
+        },
+        "building_id": {
+          "type": "integer"
+        },
+        "addendum_number": {
+          "type": "integer"
+        },
+        "limit": {
+          "default": 100,
+          "type": "integer"
+        },
+        "offset": {
+          "default": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "document_id",
+        "contract_number",
+        "building_id",
+        "addendum_number"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "contratos"
+    ]
+  },
+  {
+    "name": "get_supply_contract_items",
+    "description": "Lista os itens de um contrato para uma obra/unidade construtiva específica.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "document_id": {
+          "type": "string"
+        },
+        "contract_number": {
+          "type": "string"
+        },
+        "building_id": {
+          "type": "integer"
+        },
+        "building_unit_id": {
+          "type": "integer"
+        },
+        "limit": {
+          "default": 100,
+          "type": "integer"
+        },
+        "offset": {
+          "default": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "document_id",
+        "contract_number",
+        "building_id",
+        "building_unit_id"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "contratos"
+    ]
+  },
+  {
+    "name": "get_supply_contract_item_purchase_requests",
+    "description": "Lista as solicitações de compra atendidas por um item de contrato.\n\nLiga o item do contrato à ETAPA 1 do processo de compras. Exige a\nhierarquia completa: obra, unidade construtiva e número do item — use\nget_supply_contract_buildings() e get_supply_contract_items() para\ndescobri-los.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "document_id": {
+          "type": "string"
+        },
+        "contract_number": {
+          "type": "string"
+        },
+        "building_id": {
+          "type": "integer"
+        },
+        "building_unit_id": {
+          "type": "integer"
+        },
+        "item_number": {
+          "type": "integer"
+        },
+        "limit": {
+          "default": 100,
+          "type": "integer"
+        },
+        "offset": {
+          "default": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "document_id",
+        "contract_number",
+        "building_id",
+        "building_unit_id",
+        "item_number"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "contratos"
+    ]
+  },
+  {
+    "name": "authorize_supply_contract",
+    "description": "Autoriza um contrato de suprimentos pendente de autorização.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "document_id": {
+          "type": "string",
+          "description": "Id do documento (ex: \"CT\")"
+        },
+        "contract_number": {
+          "type": "string",
+          "description": "Número do contrato"
+        },
+        "observation": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "observação da autorização (máx. 300 caracteres)"
+        },
+        "confirm": {
+          "default": false,
+          "type": "boolean",
+          "description": "aprova um compromisso contratual — só executa com confirm=True.\nSem ele, devolve uma prévia para conferência com o usuário."
+        }
+      },
+      "required": [
+        "document_id",
+        "contract_number"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "contratos"
+    ]
+  },
+  {
+    "name": "disapprove_supply_contract",
+    "description": "Reprova um contrato de suprimentos pendente de autorização.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "document_id": {
+          "type": "string",
+          "description": "Id do documento (ex: \"CT\")"
+        },
+        "contract_number": {
+          "type": "string",
+          "description": "Número do contrato"
+        },
+        "observation": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "observação da reprovação (máx. 300 caracteres)"
+        },
+        "confirm": {
+          "default": false,
+          "type": "boolean",
+          "description": "bloqueia um contrato em andamento — só executa com confirm=True.\nSem ele, devolve uma prévia para conferência com o usuário."
+        }
+      },
+      "required": [
+        "document_id",
+        "contract_number"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "contratos"
+    ]
+  },
+  {
+    "name": "billdebt_get_bills_by_change_date",
+    "description": "Busca títulos a pagar por data da última alteração (bill-debt-v1, GET /bills/by-change-date).",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "start_date": {
+          "type": "string"
+        },
+        "end_date": {
+          "type": "string"
+        },
+        "debtor_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "creditor_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "cost_center_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "documents_identification_id": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "document_number": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "status": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "origin_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "limit": {
+          "default": 100,
+          "type": "integer"
+        },
+        "offset": {
+          "default": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "start_date",
+        "end_date"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "titulos"
+    ]
+  },
+  {
+    "name": "billdebt_get_bill",
+    "description": "Busca um título a pagar específico pelo ID (bill-debt-v1, GET /bills/{billId}).",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "bill_id": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "bill_id"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "titulos"
+    ]
+  },
+  {
+    "name": "billdebt_insert_bill",
+    "description": "Insere um título a pagar manualmente (bill-debt-v1, POST /bills).\n\nO Sienge já cria títulos automaticamente ao lançar uma NF de compra (veja\ncreate_sienge_purchase_invoice) — use esta tool só para títulos que não\nvêm de uma NF de compra. Por segurança, exige force_create=True; sem\nisso, retorna apenas um aviso e não chama a API.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "debtor_id": {
+          "type": "integer"
+        },
+        "creditor_id": {
+          "type": "integer"
+        },
+        "document_identification_id": {
+          "type": "string"
+        },
+        "document_number": {
+          "type": "string"
+        },
+        "issue_date": {
+          "type": "string"
+        },
+        "installments_number": {
+          "type": "integer"
+        },
+        "index_id": {
+          "type": "integer"
+        },
+        "base_date": {
+          "type": "string"
+        },
+        "due_date": {
+          "type": "string"
+        },
+        "bill_date": {
+          "type": "string"
+        },
+        "total_invoice_amount": {
+          "type": "number"
+        },
+        "notes": {
+          "type": "string"
+        },
+        "discount": {
+          "type": "number"
+        },
+        "budget_categories": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "type": "array",
+          "description": "obrigatório, ≥1 item —\n[{\"costCenterId\": int, \"paymentCategoriesId\": \"2010101\", \"percentage\": 100.00}]"
+        },
+        "taxes": {
+          "anyOf": [
+            {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "opcional — [{\"taxId\": int, \"ibgeCityId\": \"4205407\", \"rate\": 5.46,\n\"amount\": 95.57, \"taxableBaseAmount\": 253.75, \"taxRateMarker\": 100.00,\n\"usesIncomeTaxTable\": bool}]"
+        },
+        "departments_cost": {
+          "anyOf": [
+            {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "opcional — [{\"departmentId\": int, \"percentage\": 100.00}]"
+        },
+        "buildings_cost": {
+          "anyOf": [
+            {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "opcional — [{\"buildingId\": int, \"buildingUnitId\": int,\n\"costEstimationSheetId\": \"1.001.001\", \"percentage\": 100.00}]"
+        },
+        "units": {
+          "anyOf": [
+            {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "opcional — [{\"unitId\": \"1\", \"costCenterId\": int, \"percentage\": 100.00,\n\"principal\": \"S\"}]"
+        },
+        "force_create": {
+          "default": false,
+          "type": "boolean",
+          "description": "confirma que você realmente quer inserir manualmente"
+        }
+      },
+      "required": [
+        "debtor_id",
+        "creditor_id",
+        "document_identification_id",
+        "document_number",
+        "issue_date",
+        "installments_number",
+        "index_id",
+        "base_date",
+        "due_date",
+        "bill_date",
+        "total_invoice_amount",
+        "notes",
+        "discount",
+        "budget_categories"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "titulos"
+    ]
+  },
+  {
+    "name": "billdebt_update_bill",
+    "description": "Atualiza campos do cabeçalho de um título (bill-debt-v1, PATCH /bills/{billId}).",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "bill_id": {
+          "type": "integer"
+        },
+        "document_identification_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "sigla do tipo de documento, ex: \"NF\", \"DP\""
+        },
+        "document_number": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "número impresso no documento, ex: \"AX123\""
+        },
+        "total_invoice_amount": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Valor total da nota fiscal (ex: 168.13). Aceita\nnúmero ou string numérica, já que alguns clientes MCP serializam\nnúmeros como texto."
+        },
+        "extra_fields": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Campos adicionais conforme parametrização do Sienge"
+        },
+        "confirm": {
+          "default": false,
+          "type": "boolean",
+          "description": "pode alterar o valor devido — só executa com confirm=True.\nSem ele, devolve uma prévia para conferência com o usuário."
+        }
+      },
+      "required": [
+        "bill_id"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "titulos"
+    ]
+  },
+  {
+    "name": "billdebt_insert_electronic_invoice_bill",
+    "description": "Cria um título a partir de uma NF-e/CT-e recebida (bill-debt-v1, POST /eletronic-invoice-bills).",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "document_identification_id": {
+          "type": "string",
+          "description": "documento fiscal modelo 55 (ex: \"NFE\")"
+        },
+        "access_key_number": {
+          "type": "string",
+          "description": "chave de acesso da NF-e/CT-e (44 caracteres)"
+        },
+        "installments_number": {
+          "type": "integer"
+        },
+        "index_id": {
+          "type": "integer"
+        },
+        "base_date": {
+          "type": "string"
+        },
+        "due_date": {
+          "type": "string"
+        },
+        "bill_date": {
+          "type": "string"
+        },
+        "budget_categories": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "debtor_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "opcional — critério de desempate quando mais de uma empresa\ncompartilha o CNPJ/CPF do destinatário"
+        },
+        "creditor_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "opcional — mesmo critério de desempate, para o emitente"
+        },
+        "notes": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "departments_cost": {
+          "anyOf": [
+            {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "buildings_cost": {
+          "anyOf": [
+            {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "units": {
+          "anyOf": [
+            {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "document_identification_id",
+        "access_key_number",
+        "installments_number",
+        "index_id",
+        "base_date",
+        "due_date",
+        "bill_date",
+        "budget_categories"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "titulos"
+    ]
+  },
+  {
+    "name": "billdebt_get_installments",
+    "description": "Lista as parcelas de um título (bill-debt-v1, GET /bills/{billId}/installments).",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "bill_id": {
+          "type": "integer"
+        },
+        "limit": {
+          "default": 100,
+          "type": "integer"
+        },
+        "offset": {
+          "default": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "bill_id"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "titulos"
+    ]
+  },
+  {
+    "name": "billdebt_update_installments_batch",
+    "description": "Atualiza várias parcelas de um título em lote (bill-debt-v1, PATCH /bills/{billId}/installments).",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "bill_id": {
+          "type": "integer"
+        },
+        "installments": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "type": "array",
+          "description": "[{\"installmentId\": int, \"dueDate\": \"2018-12-22\",\n\"interestAmount\": 10.00, \"fineAmount\": 10.00,\n\"monetaryCorrectionAmount\": 10.00, \"amount\": 10.00,\n\"discountAmount\": 10.00}] — cada item precisa de \"installmentId\"\ne ao menos mais um campo. Se uma parcela falhar, nenhuma é aplicada."
+        },
+        "confirm": {
+          "default": false,
+          "type": "boolean",
+          "description": "altera valores e vencimentos a pagar — só executa com\nconfirm=True. Sem ele, devolve uma prévia para conferência."
+        }
+      },
+      "required": [
+        "bill_id",
+        "installments"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "titulos"
+    ]
+  },
+  {
+    "name": "billdebt_update_installment",
+    "description": "Atualiza uma parcela específica (bill-debt-v1, PATCH /bills/{billId}/installments/{installmentId}).",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "bill_id": {
+          "type": "integer"
+        },
+        "installment_id": {
+          "type": "integer"
+        },
+        "due_date": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "string ISO 8601 \"yyyy-MM-dd\" (ex: \"2026-02-04\") — envie sempre\nentre aspas no JSON-RPC, senão é interpretado como expressão matemática"
+        },
+        "interest_amount": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "fine_amount": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "monetary_correction_amount": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "amount": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "se informado, o valor total do título pode ser recalculado"
+        },
+        "discount_amount": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "confirm": {
+          "default": false,
+          "type": "boolean",
+          "description": "altera valor ou vencimento a pagar — só executa com confirm=True.\nSem ele, devolve uma prévia para conferência com o usuário."
+        }
+      },
+      "required": [
+        "bill_id",
+        "installment_id"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "titulos"
+    ]
+  },
+  {
+    "name": "billdebt_get_taxes",
+    "description": "Lista os impostos de um título (bill-debt-v1, GET /bills/{billId}/taxes).",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "bill_id": {
+          "type": "integer"
+        },
+        "limit": {
+          "default": 100,
+          "type": "integer"
+        },
+        "offset": {
+          "default": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "bill_id"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "titulos"
+    ]
+  },
+  {
+    "name": "billdebt_get_budget_categories",
+    "description": "Lista as apropriações financeiras (planos de conta) de um título (bill-debt-v1, GET /bills/{billId}/budget-categories).",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "bill_id": {
+          "type": "integer"
+        },
+        "limit": {
+          "default": 100,
+          "type": "integer"
+        },
+        "offset": {
+          "default": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "bill_id"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "titulos"
+    ]
+  },
+  {
+    "name": "billdebt_get_departments_cost",
+    "description": "Lista as apropriações por departamento de um título (bill-debt-v1, GET /bills/{billId}/departments-cost).",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "bill_id": {
+          "type": "integer"
+        },
+        "limit": {
+          "default": 100,
+          "type": "integer"
+        },
+        "offset": {
+          "default": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "bill_id"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "titulos"
+    ]
+  },
+  {
+    "name": "billdebt_update_departments_cost",
+    "description": "Substitui as apropriações por departamento de um título (bill-debt-v1, PUT /bills/{billId}/departments-cost).",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "bill_id": {
+          "type": "integer"
+        },
+        "departments_cost": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "type": "array",
+          "description": "[{\"departmentId\": int, \"percentage\": 100.00}] — os\npercentuais devem somar exatamente 100%."
+        }
+      },
+      "required": [
+        "bill_id",
+        "departments_cost"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "titulos"
+    ]
+  },
+  {
+    "name": "billdebt_get_buildings_cost",
+    "description": "Lista as apropriações por obra de um título (bill-debt-v1, GET /bills/{billId}/buildings-cost).",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "bill_id": {
+          "type": "integer"
+        },
+        "limit": {
+          "default": 100,
+          "type": "integer"
+        },
+        "offset": {
+          "default": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "bill_id"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "titulos"
+    ]
+  },
+  {
+    "name": "billdebt_update_buildings_cost",
+    "description": "Substitui as apropriações por obra de um título (bill-debt-v1, PUT /bills/{billId}/buildings-cost).",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "bill_id": {
+          "type": "integer"
+        },
+        "buildings_cost": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "type": "array",
+          "description": "[{\"buildingId\": int, \"buildingUnitId\": int,\n\"costEstimationSheetId\": \"1.001.001\", \"percentage\": 100.00}]"
+        }
+      },
+      "required": [
+        "bill_id",
+        "buildings_cost"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "titulos"
+    ]
+  },
+  {
+    "name": "billdebt_list_payment_forms",
+    "description": "Lista as formas de pagamento aceitas para uma parcela e os campos que cada uma exige.\n\nConsulte antes de billdebt_set_payment_information: os campos obrigatórios\nvariam bastante entre Pix, transferência bancária, boletos e os tributos.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {},
+      "type": "object"
+    },
+    "tags": [
+      "titulos"
+    ]
+  },
+  {
+    "name": "billdebt_set_payment_information",
+    "description": "Define a forma de pagamento de uma parcela do título.\n\nA API tem uma rota por forma, todas com o mesmo formato — muda apenas quais\ncampos o corpo exige.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "bill_id": {
+          "type": "integer"
+        },
+        "installment_id": {
+          "type": "integer"
+        },
+        "tipo": {
+          "type": "string",
+          "description": "pix, bank-transfer, boleto-bancario, boleto-concessionaria,\nboleto-tax, dda, darf-tax, darj-tax, fgts-tax, gare-tax ou inss-tax"
+        },
+        "payment_type_id": {
+          "type": "integer",
+          "description": "código do tipo de pagamento no Sienge"
+        },
+        "notes": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "campos": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "campos específicos da forma, em camelCase. Veja os obrigatórios\nem billdebt_list_payment_forms() — pix, por exemplo, exige\nisUsingCreditorData, keyPix e keyPixType."
+        },
+        "confirm": {
+          "default": false,
+          "type": "boolean",
+          "description": "define QUEM recebe o dinheiro — só executa com confirm=True.\nSem ele, devolve uma prévia para conferência com o usuário."
+        }
+      },
+      "required": [
+        "bill_id",
+        "installment_id",
+        "tipo",
+        "payment_type_id"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "titulos"
+    ]
+  },
+  {
+    "name": "billdebt_get_payment_information",
+    "description": "Consulta a forma de pagamento definida para uma parcela.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "bill_id": {
+          "type": "integer"
+        },
+        "installment_id": {
+          "type": "integer"
+        },
+        "tipo": {
+          "type": "string",
+          "description": "pix, bank-transfer, boleto-bancario, boleto-concessionaria,\nboleto-tax, dda, darf-tax, darj-tax, fgts-tax, gare-tax ou inss-tax"
+        }
+      },
+      "required": [
+        "bill_id",
+        "installment_id",
+        "tipo"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "titulos"
+    ]
+  },
+  {
+    "name": "billdebt_insert_attachment",
+    "description": "Anexa um arquivo a um título, até 70 MB (bill-debt-v1, POST /bills/{billId}/attachments).\n\nInforme file_path (local ou URL) OU o par (file_name + file_content_base64).",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "bill_id": {
+          "type": "integer"
+        },
+        "description": {
+          "type": "string"
+        },
+        "file_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "file_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "file_content_base64": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "content_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "bill_id",
+        "description"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "titulos"
+    ]
+  },
+  {
+    "name": "billdebt_get_attachments",
+    "description": "Lista os anexos de um título (bill-debt-v1, GET /bills/{billId}/attachments).",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "bill_id": {
+          "type": "integer"
+        },
+        "limit": {
+          "default": 100,
+          "type": "integer"
+        },
+        "offset": {
+          "default": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "bill_id"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "titulos"
+    ]
+  },
+  {
+    "name": "billdebt_download_attachment",
+    "description": "Baixa um anexo de um título em Base64 (bill-debt-v1, GET /bills/{billId}/attachments/{attachmentId}).",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "bill_id": {
+          "type": "integer"
+        },
+        "attachment_id": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "bill_id",
+        "attachment_id"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "titulos"
+    ]
+  },
+  {
+    "name": "billdebt_get_units",
+    "description": "Lista as unidades vinculadas a um título (bill-debt-v1, GET /bills/{billId}/units).",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "bill_id": {
+          "type": "integer"
+        },
+        "limit": {
+          "default": 100,
+          "type": "integer"
+        },
+        "offset": {
+          "default": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "bill_id"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "titulos"
+    ]
+  },
+  {
+    "name": "billdebt_update_units",
+    "description": "Substitui as unidades vinculadas a um título (bill-debt-v1, PUT /bills/{billId}/units).",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "bill_id": {
+          "type": "integer"
+        },
+        "units": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "type": "array",
+          "description": "[{\"unitId\": \"1\", \"costCenterId\": int, \"percentage\": 100.00, \"principal\": \"S\"}]"
+        }
+      },
+      "required": [
+        "bill_id",
+        "units"
+      ],
+      "type": "object"
+    },
+    "tags": [
+      "titulos"
+    ]
+  },
+  {
+    "name": "get_sienge_api_quota",
+    "description": "Mostra o consumo das cotas diárias da API do Sienge e o saldo restante.\n\nO Sienge limita requisições por dia em duas trilhas independentes: REST,\nlarga (100 a 75.000 por dia conforme o pacote), e BULK, estreita (10 a\n200). As consultas de contas a receber, contas a pagar e itens de nota em\nvolume usam a trilha BULK.\n\nConsulte antes de uma sequência de consultas bulk: no pacote Special, de\n50 por dia, um panorama financeiro com os dois lados custa 2.\n\nO limite vem de SIENGE_MCP_API_PACKAGE. Sem essa variável o uso é contado,\nmas não há limite de referência — o retorno lista os pacotes disponíveis.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {},
+      "type": "object"
+    },
+    "tags": [
+      "nucleo"
+    ]
+  },
+  {
+    "name": "get_auth_info",
+    "description": "Mostra qual mecanismo de autenticação está configurado (Bearer Token ou Basic Auth) e se está pronto para uso.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {},
+      "type": "object"
+    },
+    "tags": [
+      "nucleo"
+    ]
+  }
+]
