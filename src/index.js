@@ -11,6 +11,8 @@
  * para stderr e para o arquivo de log.
  */
 
+import { realpathSync } from "node:fs";
+import { pathToFileURL } from "node:url";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 
@@ -68,10 +70,32 @@ async function main() {
   logger.info("Servidor MCP pronto para uso (stdio)");
 }
 
-// Só sobe o transporte quando executado diretamente; importar este módulo (por
-// testes ou pelo verificador de schemas) deve registrar as tools sem falar com
-// ninguém.
-if (import.meta.url === `file://${process.argv[1]}`) {
+/**
+ * Este módulo foi executado diretamente, ou apenas importado?
+ *
+ * A comparação ingênua — `import.meta.url === \`file://${process.argv[1]}\`` —
+ * dá falso negativo em três situações, e o servidor simplesmente não sobe:
+ *
+ *   1. instalado via npm, o binário é um symlink em `node_modules/.bin/`, e
+ *      `import.meta.url` já vem com o caminho real resolvido;
+ *   2. caminhos não-canônicos (`/tmp` é symlink para `/private/tmp` no macOS);
+ *   3. qualquer espaço ou acento no caminho, que numa URL precisa vir escapado.
+ *
+ * `realpathSync` resolve (1) e (2); `pathToFileURL` resolve (3).
+ */
+function executadoDiretamente() {
+  if (!process.argv[1]) return false;
+  try {
+    return import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href;
+  } catch {
+    // argv[1] apontando para algo que não existe: não fomos nós.
+    return false;
+  }
+}
+
+// Importar este módulo (por testes ou pelo verificador de schemas) deve
+// registrar as tools sem falar com ninguém.
+if (executadoDiretamente()) {
   main().catch((err) => {
     logger.error("Falha ao iniciar o servidor", { error: err?.message ?? String(err) });
     process.exit(1);

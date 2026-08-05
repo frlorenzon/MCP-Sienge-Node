@@ -7,6 +7,13 @@
   "bin": {
     "mcp-sienge-node": "src/index.js"
   },
+  "files": [
+    "src/",
+    "!src/tools/cadastros.js",
+    "README.md",
+    "LICENSE",
+    ".env.example"
+  ],
   "scripts": {
     "start": "node src/index.js",
     "check": "node scripts/check-schemas.js",

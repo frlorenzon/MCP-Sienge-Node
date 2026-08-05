@@ -119,6 +119,29 @@ export function registerTool(server, spec) {
   return handle;
 }
 
+/**
+ * Quantas tools de cada módulo estão de fato registradas neste servidor.
+ *
+ * Diferente de `modules.toolCounts()`, que conta o catálogo completo — a
+ * especificação de onde cada tool vai morar quando existir. A diferença entre
+ * os dois é o que ainda não foi implementado, e é por isso que as tools de
+ * módulo consultam esta função e não aquela: anunciar um módulo que não tem
+ * tools faz o modelo carregá-lo, receber sucesso e não ganhar ferramenta
+ * nenhuma.
+ */
+export function contarPorTag() {
+  const contagem = {};
+  for (const { tags } of registered.values()) {
+    for (const tag of tags) contagem[tag] = (contagem[tag] ?? 0) + 1;
+  }
+  return contagem;
+}
+
+/** Módulos que têm ao menos uma tool registrada. */
+export function modulosDisponiveis() {
+  return new Set(Object.keys(contarPorTag()));
+}
+
 /** Habilita as tools cujas tags estejam em `tagsAtivas`. */
 export function enableByTags(tagsAtivas) {
   for (const { handle, tags } of registered.values()) {

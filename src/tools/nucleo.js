@@ -20,7 +20,7 @@ import * as tagRegistry from "../modules.js";
 import * as discovery from "../workflows/discovery.js";
 import * as entities from "../api/entities.js";
 import { describePurchaseProcess } from "../knowledge/purchaseProcess.js";
-import { enableByTags, disableByTags, registered } from "../registry.js";
+import { contarPorTag, enableByTags, disableByTags, registered } from "../registry.js";
 
 // %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 // ADAPTADORES DE ENTIDADE
@@ -87,14 +87,21 @@ export function definirModulosAtivos(modulos) {
   modulosAtivos = modulos === null ? new Set(Object.keys(tagRegistry.MODULES)) : new Set(modulos);
 }
 
+/**
+ * Só entram no resumo os módulos que têm tools registradas. Listar um módulo
+ * vazio faria o modelo carregá-lo, receber sucesso e não ganhar ferramenta
+ * nenhuma — pior que não anunciá-lo.
+ */
 function resumoModulos(ativos) {
-  const contagem = tagRegistry.toolCounts();
-  return Object.entries(tagRegistry.MODULES).map(([nome, descricao]) => ({
-    modulo: nome,
-    descricao,
-    tools: contagem[nome] ?? 0,
-    carregado: ativos.has(nome),
-  }));
+  const disponiveis = contarPorTag();
+  return Object.entries(tagRegistry.MODULES)
+    .filter(([nome]) => disponiveis[nome] > 0)
+    .map(([nome, descricao]) => ({
+      modulo: nome,
+      descricao,
+      tools: disponiveis[nome],
+      carregado: ativos.has(nome),
+    }));
 }
 
 // %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -210,15 +217,35 @@ export function registrarNucleo(server, { perfilConfigurado }) {
       "catálogo por módulo para economizar contexto, então a tool provavelmente\n" +
       "existe mas está fora do recorte atual. `enable_sienge_modules` carrega o\n" +
       "módulo que faltar.",
-    handler: async () => ({
-      success: true,
-      modulos: resumoModulos(modulosAtivos),
-      carregados: [...modulosAtivos].sort(),
-      perfil_configurado: perfilConfigurado === null ? "todos" : [...perfilConfigurado].sort(),
-      observacao:
-        "Use enable_sienge_modules para carregar um módulo. O módulo " +
-        `'${tagRegistry.CORE_MODULE}' está sempre carregado.`,
-    }),
+    handler: async () => {
+      const disponiveis = contarPorTag();
+      const previstos = Object.keys(tagRegistry.MODULES).filter((m) => !disponiveis[m]);
+      const resumo = resumoModulos(modulosAtivos);
+      const carregados = [...modulosAtivos].filter((m) => disponiveis[m] > 0).sort();
+
+      return {
+        success: true,
+        modulos: resumo,
+        carregados,
+        perfil_configurado:
+          perfilConfigurado === null ? "todos" : [...perfilConfigurado].sort(),
+        observacao:
+          "Use enable_sienge_modules para carregar um módulo. O módulo " +
+          `'${tagRegistry.CORE_MODULE}' está sempre carregado.`,
+        // Sem isto, um módulo previsto mas ainda não implementado seria
+        // indistinguível de um que simplesmente não existe — e o modelo
+        // insistiria em carregá-lo.
+        ...(previstos.length
+          ? {
+              modulos_previstos: previstos.sort(),
+              aviso_de_versao:
+                `Esta versão do servidor implementa ${resumo.length} de ` +
+                `${Object.keys(tagRegistry.MODULES).length} módulos. Os listados em ` +
+                "`modulos_previstos` ainda não têm tools e não podem ser carregados.",
+            }
+          : {}),
+      };
+    },
   });
 
   registerTool(server, {
@@ -247,15 +274,30 @@ export function registrarNucleo(server, { perfilConfigurado }) {
         return { success: false, error: "Informe ao menos um módulo em `modules`." };
       }
 
+      // Um módulo previsto no catálogo mas sem tools registradas seria
+      // "carregado" com sucesso e não traria ferramenta alguma. Recusar é o
+      // que impede o modelo de insistir numa capacidade que esta versão do
+      // servidor não tem.
+      const disponiveis = contarPorTag();
+      const semTools = [...validos].filter((m) => !disponiveis[m]);
+      if (semTools.length) {
+        return {
+          success: false,
+          error:
+            `Módulo não disponível nesta versão do servidor: ${semTools.sort().join(", ")}. ` +
+            "Está previsto no catálogo, mas ainda não tem tools implementadas.",
+          modulos_disponiveis: Object.keys(disponiveis).sort(),
+        };
+      }
+
       modulosAtivos = new Set([...modulosAtivos, ...validos]);
       enableByTags(validos);
 
-      const contagem = tagRegistry.toolCounts();
       return {
         success: true,
         carregados_agora: [...validos].sort(),
-        tools_adicionadas: [...validos].reduce((soma, m) => soma + (contagem[m] ?? 0), 0),
-        modulos_carregados: [...modulosAtivos].sort(),
+        tools_adicionadas: [...validos].reduce((soma, m) => soma + (disponiveis[m] ?? 0), 0),
+        modulos_carregados: [...modulosAtivos].filter((m) => disponiveis[m] > 0).sort(),
       };
     },
   });

@@ -92,6 +92,69 @@ test("tool com tag cruzada pertence aos dois módulos", () => {
 });
 
 // %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+// MÓDULOS ANUNCIADOS vs IMPLEMENTADOS
+// %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+/** Sobe o servidor em memória e devolve um cliente MCP conectado a ele. */
+async function servidorEmMemoria() {
+  const { buildServer } = await import("../src/index.js");
+  const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");
+  const { InMemoryTransport } = await import("@modelcontextprotocol/sdk/inMemory.js");
+
+  const { server } = buildServer();
+  const [ct, st] = InMemoryTransport.createLinkedPair();
+  const client = new Client({ name: "test", version: "1.0.0" });
+  await Promise.all([client.connect(ct), server.connect(st)]);
+
+  const call = async (name, args = {}) =>
+    JSON.parse((await client.callTool({ name, arguments: args })).content[0].text);
+
+  return { client, call };
+}
+
+test("list_sienge_modules só anuncia módulos que têm tools", async () => {
+  const { client, call } = await servidorEmMemoria();
+  try {
+    const r = await call("list_sienge_modules");
+    for (const m of r.modulos) {
+      assert.ok(m.tools > 0, `módulo '${m.modulo}' anunciado com ${m.tools} tools`);
+    }
+    // O que está no catálogo mas não implementado precisa aparecer como
+    // previsto, e não some da resposta — some da lista de carregáveis.
+    assert.ok(r.modulos_previstos.includes("cadastros"));
+    assert.match(r.aviso_de_versao, /não têm tools/);
+  } finally {
+    await client.close();
+  }
+});
+
+test("enable_sienge_modules recusa módulo sem tools em vez de mentir", async () => {
+  const { client, call } = await servidorEmMemoria();
+  try {
+    const antes = (await client.listTools()).tools.length;
+    const r = await call("enable_sienge_modules", { modules: ["cadastros"] });
+    const depois = (await client.listTools()).tools.length;
+
+    assert.equal(r.success, false, "carregar módulo vazio não pode reportar sucesso");
+    assert.match(r.error, /não disponível nesta versão/);
+    assert.equal(depois, antes, "nenhuma tool devia ter aparecido");
+  } finally {
+    await client.close();
+  }
+});
+
+test("enable_sienge_modules ainda recusa módulo inexistente", async () => {
+  const { client, call } = await servidorEmMemoria();
+  try {
+    const r = await call("enable_sienge_modules", { modules: ["inventado"] });
+    assert.equal(r.success, false);
+    assert.match(r.error, /Módulo desconhecido/);
+  } finally {
+    await client.close();
+  }
+});
+
+// %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 // DESCOBERTA
 // %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
