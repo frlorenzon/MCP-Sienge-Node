@@ -5,7 +5,7 @@
  *
  * Verificador de schemas contra o catálogo de referência.
  *
- * `contract/catalogo-tools.json` é a especificação das 131 tools deste
+ * `contract/catalogo-tools.json` é a especificação das 130 tools deste
  * servidor: nome, descrição e schema de cada parâmetro. Este script sobe o
  * servidor em memória, pede `tools/list` e confere que o que está implementado
  * corresponde ao que o catálogo declara.
@@ -21,6 +21,12 @@
  *
  *   node scripts/check-schemas.js             # o que já está implementado
  *   node scripts/check-schemas.js --pendentes # lista também o que falta
+ *   node scripts/check-schemas.js --sync      # grava as tools implementadas no catálogo
+ *
+ * `--sync` existe porque melhorar a descrição de uma tool é uma decisão
+ * deliberada, e sem ele o catálogo passaria a acusar como divergência aquilo
+ * que se acabou de decidir. Nunca roda sozinho: o padrão é sempre verificar, e
+ * a sincronização é um ato explícito de quem sabe o que mudou.
  */
 
 import fs from "node:fs";
@@ -178,6 +184,35 @@ if (process.argv.includes("--pendentes") && pendentes.length) {
     console.log(`  ${modulo} (${nomes.length}):`);
     for (const n of nomes) console.log(`     ${n}`);
   }
+}
+
+if (process.argv.includes("--sync")) {
+  // Sincroniza APENAS a descrição. O inputSchema fica como está de propósito:
+  // é a especificação contra a qual o código é verificado, e sobrescrevê-lo
+  // com o que o código produz transformaria a verificação numa tautologia —
+  // um parâmetro que virasse obrigatório por engano passaria a ser "o
+  // esperado". Descrição se melhora deliberadamente; schema, não se ajusta
+  // sozinho.
+  let alteradas = 0;
+  const atualizado = catalogo.map((t) => {
+    const viva = tools.find((x) => x.name === t.name);
+    if (!viva || viva.description === t.description) return t;
+    alteradas += 1;
+    return { ...t, description: viva.description };
+  });
+
+  if (alteradas === 0) {
+    console.log(`\n📝 Nada a sincronizar: as descrições já batem.\n`);
+  } else {
+    fs.writeFileSync(
+      path.join(raiz, "contract/catalogo-tools.json"),
+      `${JSON.stringify(atualizado, null, 2)}\n`,
+      "utf8"
+    );
+    console.log(`\n📝 Catálogo sincronizado: ${alteradas} descrição(ões) atualizada(s).\n`);
+  }
+  await client.close();
+  process.exit(0);
 }
 
 if (!divergencias.length) {

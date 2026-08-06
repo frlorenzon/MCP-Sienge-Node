@@ -8,12 +8,12 @@ JavaScript puro (ESM), sem etapa de build. `node src/index.js` e pronto.
 
 ## Estado
 
-**Módulo `nucleo` implementado** — 10 das 131 tools do catálogo, com toda a
+**Módulo `nucleo` implementado** — 9 das 130 tools do catálogo, com toda a
 infraestrutura compartilhada pronta.
 
 | Módulo | Tools | Estado |
 |---|---|---|
-| `nucleo` | 10 | ✅ implementado |
+| `nucleo` | 9 | ✅ implementado |
 | `cadastros` | 24 | esqueleto gerado |
 | `compras` + `compras_api` | 44 | pendente |
 | `titulos`, `financeiro`, `contratos`, `cotacoes` | 54 | pendente |
@@ -31,7 +31,7 @@ infraestrutura compartilhada pronta.
   nunca é truncado
 - **Gate de confirmação** para operações de alto impacto: a primeira chamada
   devolve uma prévia, e só executa com `confirm: true`
-- **Catálogo por módulo** — carregar as 131 tools de uma vez custa ~22.500
+- **Catálogo por módulo** — carregar as 130 tools de uma vez custa ~22.500
   tokens de contexto em toda requisição; `SIENGE_PROFILE` e
   `enable_sienge_modules` recortam isso
 - **Licenciamento Ed25519 offline**, com `node:crypto`, sem dependência externa
@@ -129,7 +129,7 @@ src/
 ├── index.js            bootstrap stdio + perfil estático
 ├── config.js           credenciais e resolução de auth
 ├── registry.js         registro de tools: licença, auditoria, tags, envelope MCP
-├── modules.js          catálogo dos 8 módulos e as 131 tools
+├── modules.js          catálogo dos 8 módulos e as 130 tools
 ├── confirmation.js     gate de confirmação para operações de alto impacto
 ├── licensing.js        validação Ed25519 offline
 ├── http/
@@ -146,10 +146,10 @@ src/
 │   ├── _restHelpers.js padrões de listagem e cache
 │   └── entities.js     as 5 consultas de que o núcleo depende
 ├── workflows/
-│   └── discovery.js    busca, catálogo e paginação
+│   └── discovery.js    busca e paginação
 ├── knowledge/          processo de compras (conhecimento, não API)
 └── tools/
-    ├── nucleo.js       as 10 tools sempre visíveis
+    ├── nucleo.js       as 9 tools sempre visíveis
     └── cadastros.js    esqueleto, ainda não registrado
 ```
 

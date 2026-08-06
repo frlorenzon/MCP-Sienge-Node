@@ -114,10 +114,10 @@ export function registrarNucleo(server, { perfilConfigurado }) {
   registerTool(server, {
     name: "test_sienge_connection",
     description:
-      "Verifica se as credenciais configuradas conseguem autenticar na API do Sienge.\n\n" +
-      "Falha rápido (uma tentativa, timeout de 10s) em vez de aplicar a política\n" +
-      "de retry padrão — o objetivo aqui é um diagnóstico rápido, não robustez\n" +
-      "contra instabilidade de rede.",
+      "Testa se as credenciais autenticam de fato contra a API do Sienge, com uma " +
+      "chamada real de baixo custo. Use para diagnosticar falha de conexão ou " +
+      "credencial; para apenas ver qual mecanismo está configurado, sem chamar a " +
+      "API, use get_auth_info.",
     // Latência e id da requisição são o resultado desta tool, não ruído de
     // diagnóstico a ser podado.
     manterMetadados: true,
@@ -133,22 +133,22 @@ export function registrarNucleo(server, { perfilConfigurado }) {
     name: "get_auth_info",
     description:
       "Mostra qual mecanismo de autenticação está configurado (Bearer Token ou " +
-      "Basic Auth) e se está pronto para uso.",
+      "Basic Auth) e se as credenciais estão completas. Não chama a API — para " +
+      "verificar se elas de fato funcionam, use test_sienge_connection.",
     handler: async () => getAuthInfo(),
   });
 
   registerTool(server, {
     name: "get_sienge_api_quota",
+    // Os números por pacote saíram daqui de propósito: a resposta traz a tabela
+    // completa em `pacotes_disponiveis`, e mantê-los também na descrição é
+    // pagá-los em toda requisição para entregar o que a chamada já entrega.
     description:
-      "Mostra o consumo das cotas diárias da API do Sienge e o saldo restante.\n\n" +
-      "O Sienge limita requisições por dia em duas trilhas independentes: REST,\n" +
-      "larga (100 a 75.000 por dia conforme o pacote), e BULK, estreita (10 a\n" +
-      "200). As consultas de contas a receber, contas a pagar e itens de nota em\n" +
-      "volume usam a trilha BULK.\n\n" +
-      "Consulte antes de uma sequência de consultas bulk: no pacote Special, de\n" +
-      "50 por dia, um panorama financeiro com os dois lados custa 2.\n\n" +
-      "O limite vem de SIENGE_MCP_API_PACKAGE. Sem essa variável o uso é contado,\n" +
-      "mas não há limite de referência — o retorno lista os pacotes disponíveis.",
+      "Mostra o consumo e o saldo das cotas diárias da API do Sienge, que são duas " +
+      "e independentes: REST, larga, e BULK, estreita. Contas a pagar, contas a " +
+      "receber e itens de nota em volume consomem BULK, e é ela que esgota " +
+      "primeiro. Consulte antes de uma sequência dessas consultas. O saldo só é " +
+      "calculado com SIENGE_MCP_API_PACKAGE configurada.",
     handler: async () => apiQuota.situacaoDasCotas(),
   });
 
@@ -157,27 +157,26 @@ export function registrarNucleo(server, { perfilConfigurado }) {
   registerTool(server, {
     name: "describe_purchase_process",
     description:
+      // Os dois exemplos concretos no fim custam ~35 tokens e ficam de
+      // propósito: são eles que fazem o modelo chamar esta tool ANTES de
+      // errar. Uma tool de conhecimento que não é invocada no momento certo
+      // custa contexto e não entrega nada.
       "Explica o processo de compras do Sienge de ponta a ponta: as 5 etapas, quais\n" +
-      "delas são opcionais, os caminhos válidos e as limitações da API.\n\n" +
-      "Consulte esta tool ANTES de responder qualquer pergunta sobre solicitações,\n" +
-      "cotações, pedidos de compra ou suas aprovações. Ela evita os erros mais\n" +
-      "comuns — como procurar preço numa solicitação de compra, que não tem preço,\n" +
-      "ou supor que todo pedido nasceu de uma solicitação.",
+      "são opcionais, os caminhos válidos e os limites da API.\n\n" +
+      "Consulte ANTES de responder qualquer pergunta sobre solicitações, cotações,\n" +
+      "pedidos de compra ou aprovações. Evita os erros mais comuns — procurar preço\n" +
+      "numa solicitação de compra, que não tem preço, ou supor que todo pedido\n" +
+      "nasceu de uma solicitação.",
     handler: () => describePurchaseProcess(),
   });
 
-  registerTool(server, {
-    name: "list_sienge_entities",
-    description:
-      "Retorna o catálogo de entidades do Sienge consultáveis pelas tools deste servidor.",
-    handler: () =>
-      discovery.listSiengeEntities({
-        registradas: new Set(registered.keys()),
-        noCatalogo: new Set(tagRegistry.TOOL_TAGS.keys()),
-      }),
-  });
-
   // ---------- Busca e paginação ----------
+  //
+  // Não há tool para listar as entidades consultáveis: a informação que ela
+  // daria — o alcance da busca em cada entidade — já viaja no resultado de
+  // search_sienge_data e get_sienge_data_paginated, anexada a cada resposta.
+  // Chega no momento em que importa, sem depender de o modelo lembrar de
+  // consultar um catálogo antes, e sem custar contexto em toda requisição.
 
   registerTool(server, {
     name: "search_sienge_data",

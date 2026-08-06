@@ -5,9 +5,9 @@
  *
  * Gerador de esqueletos de tool a partir do catálogo de referência.
  *
- * `contract/catalogo-tools.json` especifica as 131 tools deste servidor com
+ * `contract/catalogo-tools.json` especifica as 130 tools deste servidor com
  * seus 540 parâmetros, defaults e descrições. Escrever os objetos Zod
- * correspondentes à mão seria trabalho mecânico repetido 131 vezes, e o tipo de
+ * correspondentes à mão seria trabalho mecânico repetido 130 vezes, e o tipo de
  * trabalho em que um default trocado passa despercebido.
  *
  * O que este script gera é um esqueleto: schema completo e descrição fiel, com

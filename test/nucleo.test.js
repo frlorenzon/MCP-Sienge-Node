@@ -49,10 +49,10 @@ test("licença assinada por outra chave é rejeitada", () => {
 // MÓDULOS
 // %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-test("catálogo cobre as 131 tools sem repetição", () => {
-  assert.equal(modules.TOOL_TAGS.size, 131);
+test("catálogo cobre as 130 tools sem repetição", () => {
+  assert.equal(modules.TOOL_TAGS.size, 130);
   const total = Object.values(modules.toolCounts()).reduce((a, b) => a + b, 0);
-  assert.equal(total, 131);
+  assert.equal(total, 130);
 });
 
 test("SIENGE_PROFILE sempre inclui o núcleo", () => {
@@ -140,53 +140,6 @@ test("enable_sienge_modules recusa módulo sem tools em vez de mentir", async ()
     assert.equal(depois, antes, "nenhuma tool devia ter aparecido");
   } finally {
     await client.close();
-  }
-});
-
-test("list_sienge_entities não recomenda tool que o servidor não expõe", async () => {
-  const { client, call } = await servidorEmMemoria();
-  try {
-    const { tools } = await client.listTools();
-    const existentes = new Set(tools.map((t) => t.name));
-    const r = await call("list_sienge_entities");
-
-    for (const e of r.entities) {
-      for (const t of e.tools) {
-        assert.ok(existentes.has(t), `${e.type} recomenda '${t}', que não existe`);
-      }
-      // Toda entidade precisa de pelo menos um caminho utilizável agora —
-      // senão o catálogo a anuncia sem dizer como chegar nela.
-      assert.ok(e.tools.length > 0, `${e.type} ficou sem nenhuma tool disponível`);
-    }
-  } finally {
-    await client.close();
-  }
-});
-
-test("tools de módulos não carregados aparecem como previstas, não somem", async () => {
-  const { client, call } = await servidorEmMemoria();
-  try {
-    const r = await call("list_sienge_entities");
-    const clientes = r.entities.find((e) => e.type === "customers");
-    assert.deepEqual(clientes.tools_previstas, ["get_sienge_customers"]);
-    assert.match(r.aviso_de_versao, /tools_previstas/);
-  } finally {
-    await client.close();
-  }
-});
-
-test("nomes citados no catálogo de entidades existem na especificação", async () => {
-  // Um nome digitado errado aqui viraria "prevista" para sempre, prometendo
-  // uma tool que nunca vai existir.
-  const modules = await import("../src/modules.js");
-  const d = await import("../src/workflows/discovery.js");
-  const catalogo = new Set(modules.TOOL_TAGS.keys());
-  const r = await d.listSiengeEntities();
-
-  for (const e of r.entities) {
-    for (const t of e.tools) {
-      assert.ok(catalogo.has(t), `${e.type} cita '${t}', que não está no catálogo de 131`);
-    }
   }
 });
 
@@ -304,4 +257,30 @@ test("entidade sem paginador é recusada com a lista do que existe", async () =>
   const r = await discovery.getSiengeDataPaginated({}, "inventada", 1, 10);
   assert.equal(r.success, false);
   assert.deepEqual(r.supported_types, ["bills", "creditors", "customers", "projects"]);
+});
+
+test("paginação avisa quando o filtro textual não é conclusivo", async () => {
+  // A informação que list_sienge_entities daria agora viaja aqui, junto do
+  // resultado — no momento em que ela muda o que se pode concluir.
+  const funcs = {
+    customers: async () => ({ success: true, customers: [{ id: 1 }], count: 1 }),
+  };
+  const comBusca = await discovery.getSiengeDataPaginated(funcs, "customers", 1, 20, {
+    search: "ACME",
+  });
+  assert.equal(comBusca.alcance, discovery.AMOSTRA);
+  assert.match(comBusca.ressalva, /apenas.*sobre esta página/);
+
+  // Sem busca textual não há o que ressalvar — e a chave some da resposta.
+  const semBusca = await discovery.getSiengeDataPaginated(funcs, "customers", 1, 20);
+  assert.equal(semBusca.ressalva, null);
+});
+
+test("entidade filtrada no servidor não carrega ressalva", async () => {
+  const funcs = { creditors: async () => ({ success: true, creditors: [], count: 0 }) };
+  const r = await discovery.getSiengeDataPaginated(funcs, "creditors", 1, 20, {
+    search: "ACME",
+  });
+  assert.equal(r.alcance, discovery.SERVIDOR, "credores a API filtra de verdade");
+  assert.equal(r.ressalva, null, "aqui 'não encontrei' é conclusivo");
 });

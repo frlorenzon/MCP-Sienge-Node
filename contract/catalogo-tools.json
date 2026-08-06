@@ -1,7 +1,7 @@
 [
   {
     "name": "test_sienge_connection",
-    "description": "Verifica se as credenciais configuradas conseguem autenticar na API do Sienge.\n\nFalha rápido (uma tentativa, timeout de 10s) em vez de aplicar a política\nde retry padrão — o objetivo aqui é um diagnóstico rápido, não robustez\ncontra instabilidade de rede.",
+    "description": "Testa se as credenciais autenticam de fato contra a API do Sienge, com uma chamada real de baixo custo. Use para diagnosticar falha de conexão ou credencial; para apenas ver qual mecanismo está configurado, sem chamar a API, use get_auth_info.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {},
@@ -13,19 +13,7 @@
   },
   {
     "name": "describe_purchase_process",
-    "description": "Explica o processo de compras do Sienge de ponta a ponta: as 5 etapas, quais\ndelas são opcionais, os caminhos válidos e as limitações da API.\n\nConsulte esta tool ANTES de responder qualquer pergunta sobre solicitações,\ncotações, pedidos de compra ou suas aprovações. Ela evita os erros mais\ncomuns — como procurar preço numa solicitação de compra, que não tem preço,\nou supor que todo pedido nasceu de uma solicitação.",
-    "inputSchema": {
-      "additionalProperties": false,
-      "properties": {},
-      "type": "object"
-    },
-    "tags": [
-      "nucleo"
-    ]
-  },
-  {
-    "name": "list_sienge_entities",
-    "description": "Retorna o catálogo de entidades do Sienge consultáveis pelas tools deste servidor.",
+    "description": "Explica o processo de compras do Sienge de ponta a ponta: as 5 etapas, quais\nsão opcionais, os caminhos válidos e os limites da API.\n\nConsulte ANTES de responder qualquer pergunta sobre solicitações, cotações,\npedidos de compra ou aprovações. Evita os erros mais comuns — procurar preço\nnuma solicitação de compra, que não tem preço, ou supor que todo pedido\nnasceu de uma solicitação.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {},
@@ -5789,7 +5777,7 @@
   },
   {
     "name": "get_sienge_api_quota",
-    "description": "Mostra o consumo das cotas diárias da API do Sienge e o saldo restante.\n\nO Sienge limita requisições por dia em duas trilhas independentes: REST,\nlarga (100 a 75.000 por dia conforme o pacote), e BULK, estreita (10 a\n200). As consultas de contas a receber, contas a pagar e itens de nota em\nvolume usam a trilha BULK.\n\nConsulte antes de uma sequência de consultas bulk: no pacote Special, de\n50 por dia, um panorama financeiro com os dois lados custa 2.\n\nO limite vem de SIENGE_MCP_API_PACKAGE. Sem essa variável o uso é contado,\nmas não há limite de referência — o retorno lista os pacotes disponíveis.",
+    "description": "Mostra o consumo e o saldo das cotas diárias da API do Sienge, que são duas e independentes: REST, larga, e BULK, estreita. Contas a pagar, contas a receber e itens de nota em volume consomem BULK, e é ela que esgota primeiro. Consulte antes de uma sequência dessas consultas. O saldo só é calculado com SIENGE_MCP_API_PACKAGE configurada.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {},
@@ -5801,7 +5789,7 @@
   },
   {
     "name": "get_auth_info",
-    "description": "Mostra qual mecanismo de autenticação está configurado (Bearer Token ou Basic Auth) e se está pronto para uso.",
+    "description": "Mostra qual mecanismo de autenticação está configurado (Bearer Token ou Basic Auth) e se as credenciais estão completas. Não chama a API — para verificar se elas de fato funcionam, use test_sienge_connection.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {},
