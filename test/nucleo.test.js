@@ -143,6 +143,53 @@ test("enable_sienge_modules recusa módulo sem tools em vez de mentir", async ()
   }
 });
 
+test("list_sienge_entities não recomenda tool que o servidor não expõe", async () => {
+  const { client, call } = await servidorEmMemoria();
+  try {
+    const { tools } = await client.listTools();
+    const existentes = new Set(tools.map((t) => t.name));
+    const r = await call("list_sienge_entities");
+
+    for (const e of r.entities) {
+      for (const t of e.tools) {
+        assert.ok(existentes.has(t), `${e.type} recomenda '${t}', que não existe`);
+      }
+      // Toda entidade precisa de pelo menos um caminho utilizável agora —
+      // senão o catálogo a anuncia sem dizer como chegar nela.
+      assert.ok(e.tools.length > 0, `${e.type} ficou sem nenhuma tool disponível`);
+    }
+  } finally {
+    await client.close();
+  }
+});
+
+test("tools de módulos não carregados aparecem como previstas, não somem", async () => {
+  const { client, call } = await servidorEmMemoria();
+  try {
+    const r = await call("list_sienge_entities");
+    const clientes = r.entities.find((e) => e.type === "customers");
+    assert.deepEqual(clientes.tools_previstas, ["get_sienge_customers"]);
+    assert.match(r.aviso_de_versao, /tools_previstas/);
+  } finally {
+    await client.close();
+  }
+});
+
+test("nomes citados no catálogo de entidades existem na especificação", async () => {
+  // Um nome digitado errado aqui viraria "prevista" para sempre, prometendo
+  // uma tool que nunca vai existir.
+  const modules = await import("../src/modules.js");
+  const d = await import("../src/workflows/discovery.js");
+  const catalogo = new Set(modules.TOOL_TAGS.keys());
+  const r = await d.listSiengeEntities();
+
+  for (const e of r.entities) {
+    for (const t of e.tools) {
+      assert.ok(catalogo.has(t), `${e.type} cita '${t}', que não está no catálogo de 131`);
+    }
+  }
+});
+
 test("enable_sienge_modules ainda recusa módulo inexistente", async () => {
   const { client, call } = await servidorEmMemoria();
   try {

@@ -119,35 +119,83 @@ const ENTITY_CATALOG = [
     name: "Empreendimentos/Obras",
     description: "Projetos e obras cadastrados",
     busca_textual: AMOSTRA,
-    tools: ["get_sienge_projects", "get_sienge_enterprises"],
+    tools: ["get_sienge_projects", "get_sienge_enterprise_groupings", "search_sienge_data"],
   },
   {
     type: "purchase_orders",
     name: "Pedidos de Compra",
     description: "Pedidos de compra — etapa 4 do processo de compras",
     busca_textual: AMOSTRA,
-    tools: ["get_sienge_purchase_orders", "describe_purchase_process"],
+    tools: ["get_sienge_purchase_orders", "describe_purchase_process", "search_sienge_data"],
   },
   {
     type: "bills",
     name: "Títulos a Pagar",
     description: "Contas a pagar; recorte por período, sem busca textual",
     busca_textual: SEM_FILTRO,
-    tools: ["get_sienge_bills", "billdebt_get_bills"],
+    // search_sienge_data atende títulos, mas só com entity_types=["bills"]
+    // explícito: eles ficam fora da varredura padrão por não terem busca
+    // textual, e entrariam como ruído com aparência de resultado.
+    tools: ["get_sienge_bills", "billdebt_get_bills_by_change_date", "search_sienge_data"],
   },
 ];
 
-/** Retorna o catálogo de entidades consultáveis, com o alcance da busca em cada uma. */
-export async function listSiengeEntities() {
+/**
+ * Retorna o catálogo de entidades consultáveis, com o alcance da busca em cada
+ * uma.
+ *
+ * `registradas` é o conjunto de tools que este servidor de fato expõe. Sem
+ * esse recorte, a resposta recomenda ferramentas que o modelo não tem como
+ * chamar — e ele gasta uma tentativa para descobrir. As que existem no
+ * catálogo mas ainda não foram implementadas viram `tools_previstas`, para que
+ * "ainda não" não se confunda com "não existe".
+ *
+ * Sem argumento, devolve o catálogo inteiro: é o comportamento certo para
+ * quem só quer inspecionar a especificação.
+ *
+ * @param {{registradas?: Set<string>, noCatalogo?: Set<string>}} [opts]
+ */
+export async function listSiengeEntities(opts = {}) {
+  const { registradas = null, noCatalogo = null } = opts;
+
+  const entities = ENTITY_CATALOG.map((entidade) => {
+    if (!registradas) return entidade;
+
+    const disponiveis = entidade.tools.filter((t) => registradas.has(t));
+    // Uma tool citada aqui que não existe nem no catálogo é erro de digitação
+    // neste arquivo, não funcionalidade pendente — não vale anunciá-la como
+    // "prevista".
+    const previstas = entidade.tools.filter(
+      (t) => !registradas.has(t) && (!noCatalogo || noCatalogo.has(t))
+    );
+
+    return {
+      ...entidade,
+      tools: disponiveis,
+      ...(previstas.length ? { tools_previstas: previstas } : {}),
+    };
+  });
+
+  const temPrevistas = entities.some((e) => e.tools_previstas?.length);
+
   return {
     success: true,
-    entities: ENTITY_CATALOG,
-    count: ENTITY_CATALOG.length,
+    entities,
+    count: entities.length,
     observacao:
       "busca_textual indica como a entidade responde a uma busca por texto: " +
       `'${SERVIDOR}' = a API filtra e a ausência de resultado é conclusiva; ` +
       `'${AMOSTRA}' = o filtro é feito sobre a página lida, então registros fora ` +
       `dela não aparecem; '${SEM_FILTRO}' = não há busca por texto, apenas recorte.`,
+    ...(temPrevistas
+      ? {
+          aviso_de_versao:
+            "`tools` lista o que este servidor expõe agora; `tools_previstas` são " +
+            "tools do catálogo cujo módulo ainda não foi carregado — use " +
+            "list_sienge_modules e enable_sienge_modules, ou search_sienge_data, " +
+            "que atende todas as entidades.",
+        }
+      : {}),
   };
 }
 

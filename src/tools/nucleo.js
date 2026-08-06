@@ -170,7 +170,11 @@ export function registrarNucleo(server, { perfilConfigurado }) {
     name: "list_sienge_entities",
     description:
       "Retorna o catálogo de entidades do Sienge consultáveis pelas tools deste servidor.",
-    handler: () => discovery.listSiengeEntities(),
+    handler: () =>
+      discovery.listSiengeEntities({
+        registradas: new Set(registered.keys()),
+        noCatalogo: new Set(tagRegistry.TOOL_TAGS.keys()),
+      }),
   });
 
   // ---------- Busca e paginação ----------
