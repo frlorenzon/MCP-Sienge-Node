@@ -118,6 +118,9 @@ export function registrarNucleo(server, { perfilConfigurado }) {
       "Falha rápido (uma tentativa, timeout de 10s) em vez de aplicar a política\n" +
       "de retry padrão — o objetivo aqui é um diagnóstico rápido, não robustez\n" +
       "contra instabilidade de rede.",
+    // Latência e id da requisição são o resultado desta tool, não ruído de
+    // diagnóstico a ser podado.
+    manterMetadados: true,
     handler: () =>
       discovery.testSiengeConnection(fastConnectionProbe, {
         SIENGE_API_KEY: process.env.SIENGE_API_KEY,

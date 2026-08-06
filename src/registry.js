@@ -52,10 +52,63 @@ function withLicenseWarning(result) {
   };
 }
 
-/** Serializa o retorno da tool no envelope de conteúdo do protocolo MCP. */
-function toContent(result) {
+/**
+ * Metadados de diagnóstico que a camada HTTP anexa a toda resposta. Em uma
+ * resposta bem-sucedida eles não informam nada ao modelo — só ocupam contexto,
+ * a cada chamada. Em uma falha são o que permite rastrear o que aconteceu, e
+ * por isso só são removidos quando `success` é verdadeiro.
+ */
+const METADADOS_DE_DIAGNOSTICO = new Set(["request_id", "latency_ms", "status_code"]);
+
+/**
+ * Remove do resultado o que o modelo não lê: chaves nulas e, em respostas
+ * bem-sucedidas, os metadados de diagnóstico.
+ *
+ * A API do Sienge devolve `null` em profusão — campos de cadastro não
+ * preenchidos, datas ausentes, documentos vazios. Cada um deles é um par
+ * chave/valor tokenizado e cobrado a cada resposta, dizendo exatamente o mesmo
+ * que a ausência da chave já diria.
+ *
+ * Arrays preservam os elementos nulos: ali a posição é significativa, e
+ * remover um item deslocaria todos os seguintes.
+ */
+function enxugar(valor, sucesso, profundidade = 0) {
+  // Um teto de profundidade evita que uma estrutura circular ou
+  // patologicamente aninhada trave a serialização.
+  if (profundidade > 20) return valor;
+  if (Array.isArray(valor)) {
+    return valor.map((v) => enxugar(v, sucesso, profundidade + 1));
+  }
+  if (valor === null || typeof valor !== "object") return valor;
+  // Date, Buffer e afins não são objetos de dados — copiá-los chave a chave os
+  // destruiria.
+  if (valor.constructor !== Object) return valor;
+
+  const saida = {};
+  for (const [chave, v] of Object.entries(valor)) {
+    if (v === null || v === undefined) continue;
+    if (sucesso && profundidade === 0 && METADADOS_DE_DIAGNOSTICO.has(chave)) continue;
+    saida[chave] = enxugar(v, sucesso, profundidade + 1);
+  }
+  return saida;
+}
+
+/**
+ * Serializa o retorno da tool no envelope de conteúdo do protocolo MCP.
+ *
+ * Sem indentação: `JSON.stringify(x, null, 2)` produz espaços em branco que o
+ * modelo não lê e que são tokenizados e cobrados como qualquer outro caractere
+ * — numa listagem de 50 registros, ~28% da resposta.
+ *
+ * `manterMetadados` existe para as tools cujo propósito É o diagnóstico, como
+ * test_sienge_connection: nelas a latência e o id da requisição são o
+ * resultado, não ruído.
+ */
+function toContent(result, { manterMetadados = false } = {}) {
+  const sucesso = result?.success === true && !manterMetadados;
+  const enxuto = enxugar(result, sucesso);
   return {
-    content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+    content: [{ type: "text", text: JSON.stringify(enxuto) }],
   };
 }
 
@@ -78,9 +131,18 @@ export const registered = new Map();
  * @param {object} [spec.inputSchema] mapa de campos Zod; omitido = sem parâmetros
  * @param {(args: object) => Promise<object>} spec.handler
  * @param {boolean} [spec.requiresConfirm] exige que o schema declare `confirm`
+ * @param {boolean} [spec.manterMetadados] preserva request_id/latency_ms/
+ *   status_code mesmo em sucesso — para tools cujo propósito é o diagnóstico
  */
 export function registerTool(server, spec) {
-  const { name, description, inputSchema = {}, handler, requiresConfirm = false } = spec;
+  const {
+    name,
+    description,
+    inputSchema = {},
+    handler,
+    requiresConfirm = false,
+    manterMetadados = false,
+  } = spec;
 
   // Uma tool de escrita que esquece de declarar `confirm` no schema perde o
   // gate inteiro sem nenhum sinal: o handler embrulhado nunca receberia o
@@ -100,7 +162,7 @@ export function registerTool(server, spec) {
     async (args) =>
       audit.runWithTool(name, async () => {
         try {
-          return toContent(withLicenseWarning(await handler(args ?? {})));
+          return toContent(withLicenseWarning(await handler(args ?? {})), { manterMetadados });
         } catch (err) {
           // Uma exceção não tratada derrubaria a chamada com um erro de
           // protocolo, sem contexto. As tools deste servidor sempre respondem
