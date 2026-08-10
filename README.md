@@ -404,6 +404,12 @@ O desenho central: `tools/` é a superfície MCP e **custa tokens em toda
 requisição**; `apis/` é tradução de endpoint e **não custa nada**. Toda lógica
 que puder descer para `apis/` ou `workflows/` deve descer.
 
+E uma regra que já foi violada três vezes, documentada em
+[notas técnicas](docs/notas-tecnicas.md): **nenhuma resposta pode citar uma tool
+sem antes conferir se ela está registrada.** O catálogo tem 105 nomes e o
+servidor implementa 9 — citar os outros faz o modelo procurar o que o próprio
+servidor prometeu e não tem.
+
 ### Adicionando um endpoint
 
 Cada arquivo de `src/apis/` declara em `ENDPOINTS` os paths que cobre. Depois

@@ -4,6 +4,75 @@ Decisões que não são óbvias na leitura do código, e o motivo de cada uma.
 
 ---
 
+## A regra do catálogo: nada chega ao modelo sem filtro
+
+**Nenhuma resposta pode citar uma tool sem antes conferir se ela está
+registrada.** É a regra mais importante deste documento, e a única que já foi
+violada três vezes.
+
+### Por que existe
+
+`contract/catalogo-tools.json` lista 105 tools; o servidor implementa 9. O
+catálogo é **roadmap**, não promessa — mas todo artefato que o consulta trata
+seus nomes como se existissem, porque foi assim que ele nasceu: exportado de um
+servidor onde todas existiam de fato.
+
+O sintoma é sempre o mesmo, e é caro. O modelo lê "use `authorize_purchase_order`"
+numa resposta que o próprio servidor devolveu, sai procurando, não encontra — e
+**insiste**, porque a instrução veio de dentro. Do lado de quem usa, isso parece
+o assistente se perdendo. Não é: é obediência a uma fonte errada.
+
+### Os três casos
+
+| Onde | O que prometia | Corrigido em |
+|---|---|---|
+| `list_sienge_entities` | 7 de 9 tools recomendadas não existiam | a tool acabou removida |
+| `list_sienge_modules` / `enable_sienge_modules` | 8 módulos, dos quais 7 vazios; "carregar" respondia `success: true` com zero tools novas | filtro por `contarPorTag()` |
+| `describe_purchase_process` | 37 de 38 tools inexistentes, com `"cobertura_mcp": "completa"` em toda etapa | filtro contra `registered` |
+
+Três formas diferentes, uma causa só.
+
+### Como aplicar
+
+Toda resposta que cite nomes de tool cruza a lista com `registered`, de
+`src/registry.js`, e separa em três destinos — porque cada um pede uma reação
+diferente do modelo:
+
+```js
+const agora        = previstas.filter((t) => visiveis.has(t));
+const aposCarregar = previstas.filter((t) => !visiveis.has(t) && registradas.has(t));
+const inexistentes = previstas.filter((t) => !registradas.has(t));
+```
+
+- **chamável agora** → vai na resposta
+- **existe, atrás de um `carregar_<modulo>`** → vai com `como_habilitar`, dizendo
+  qual carregador chamar
+- **não implementada** → **sai da resposta**, e o item ganha um caminho
+  alternativo (`sienge_api_call`, ou "faça no próprio Sienge")
+
+Note a distinção entre `visiveis` e `registradas`: uma tool desabilitada pelo
+perfil existe e é alcançável; uma que nunca foi implementada, não. Confundir as
+duas manda o modelo carregar um módulo que não vai trazer nada.
+
+Sumir com o nome não basta: um campo do tipo `por_onde_comecar` que aponte para
+tool inexistente precisa ser **removido**, senão continua dirigindo a busca.
+
+### O que também não pode passar
+
+Rótulos de cobertura herdados. `"cobertura_mcp": "completa"` era um texto fixo
+no JSON — verdadeiro no servidor de origem, falso aqui. Qualquer campo que
+**afirme** capacidade precisa ser calculado no momento da resposta, nunca lido
+de um artefato.
+
+### Como isso é travado
+
+Cada caso tem teste de regressão que percorre a resposta e exige que todo nome
+citado exista em `registered` — ver `test/nucleo.test.js`. Ao criar uma tool que
+devolva nomes de outras tools, escreva o teste junto: é ele que impede o quarto
+caso.
+
+---
+
 ## Retry: quando repetir é seguro
 
 Um timeout não diz se a requisição chegou. Repetir um `POST` cujo timeout
