@@ -14,6 +14,25 @@ import { registerTool } from "../registry.js";
 import { makeSiengeRequest } from "../http/client.js";
 import { cacheGet, cacheSet } from "../http/cache.js";
 import * as purchaseApproval from "../workflows/purchaseApproval.js";
+import { pendingConfirmation } from "../confirmation.js";
+import * as audit from "../utils/audit.js";
+
+/**
+ * A tentativa barrada também entra na trilha.
+ *
+ * Uma aprovação que ficou pendente de confirmação é informação de auditoria:
+ * mostra o que se tentou fazer e quando, mesmo que não tenha sido feito.
+ */
+function registrarBloqueio(tool, ids, observacao) {
+  audit.record({
+    method: "BLOCKED",
+    endpoint: tool,
+    success: false,
+    error: "Confirmation Required",
+    payload: { pedidos: ids, observacao },
+    action: `Autorizar ${ids.length} pedido(s) de compra`,
+  });
+}
 
 export function registrarCompras(server) {
   registerTool(server, {
@@ -50,5 +69,81 @@ export function registrarCompras(server) {
         { cacheGet, cacheSet },
         { building_id, max_pedidos }
       ),
+  });
+
+  registerTool(server, {
+    name: "compras_aprovar_pedidos",
+    description:
+      "Autoriza um ou mais pedidos de compra de uma vez. AÇÃO IRREVERSÍVEL pelo " +
+      "MCP: desfazer só no próprio Sienge.\n\n" +
+      "Na primeira chamada, sem `confirm`, devolve uma prévia com fornecedor, obra, " +
+      "valor e número de itens de cada pedido, mais o total. Mostre essa prévia ao " +
+      "usuário, aguarde a aprovação dele e só então repita com confirm: true.\n\n" +
+      "Aprova um a um e relata cada resultado: um pedido que falha não impede os " +
+      "seguintes, e a resposta separa o que foi autorizado do que não foi. Máximo de " +
+      "50 por chamada.",
+    requiresConfirm: true,
+    inputSchema: {
+      pedidos: z
+        .array(z.number().int())
+        .describe("ids dos pedidos de compra a autorizar, como vêm em `pedido` na fila"),
+      observacao: z
+        .string()
+        .max(300)
+        .nullish()
+        .describe("justificativa registrada no Sienge, até 300 caracteres"),
+      confirm: z
+        .boolean()
+        .default(false)
+        .describe(
+          "proteção contra execução acidental — só executa com confirm=true. Sem ele, devolve a prévia do que seria aprovado"
+        ),
+    },
+    handler: async ({ pedidos, observacao, confirm = false }) => {
+      const ids = [...new Set(pedidos ?? [])];
+
+      if (ids.length === 0) {
+        return { success: false, error: "Informe ao menos um pedido em `pedidos`." };
+      }
+      if (ids.length > purchaseApproval.MAX_POR_LOTE) {
+        return {
+          success: false,
+          error:
+            `${ids.length} pedidos excedem o máximo de ${purchaseApproval.MAX_POR_LOTE} ` +
+            "por chamada. O limite existe para que a prévia continue conferível por " +
+            "uma pessoa — divida em lotes menores.",
+        };
+      }
+
+      const deps = { cacheGet, cacheSet };
+
+      if (!confirm) {
+        const previa = await purchaseApproval.previaDeAprovacao(makeSiengeRequest, deps, ids);
+        registrarBloqueio("compras_aprovar_pedidos", ids, observacao);
+        return {
+          ...pendingConfirmation(
+            `Autorizar ${ids.length} pedido(s) de compra, somando ${previa.total}`,
+            {
+              pedidos: previa.linhas,
+              total: previa.total,
+              ...(previa.naoEncontrados.length
+                ? { nao_encontrados: previa.naoEncontrados }
+                : {}),
+              ...(previa.itensNaoLidos.length
+                ? {
+                    valor_incompleto:
+                      `Os itens dos pedidos ${previa.itensNaoLidos.join(", ")} não foram ` +
+                      "lidos — o valor deles não entra no total acima.",
+                  }
+                : {}),
+            },
+            "financeiro"
+          ),
+          observacao: observacao ?? undefined,
+        };
+      }
+
+      return purchaseApproval.aprovarPedidosEmLote(makeSiengeRequest, ids, observacao);
+    },
   });
 }

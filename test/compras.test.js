@@ -14,6 +14,7 @@ process.env.SIENGE_API_KEY = "chave-de-teste";
 process.env.SIENGE_SUBDOMAIN = "empresa";
 // As tools do modo profundo só são registradas quando ele está habilitado.
 process.env.SIENGE_DEEP_MODE = "on";
+process.env.SIENGE_PROFILE = "compras";
 
 const purchaseApproval = await import("../src/workflows/purchaseApproval.js");
 
@@ -241,6 +242,141 @@ test("sienge_api_call não expõe escrita", async () => {
     assert.ok(!params.includes("method"), "não pode haver escolha de método HTTP");
     assert.ok(!params.includes("body"), "não pode haver corpo de requisição");
     assert.match(t.description, /Só leitura/);
+  } finally {
+    await client.close();
+  }
+});
+
+// %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+// APROVAÇÃO EM LOTE
+// %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+// O que se protege aqui não é o caminho feliz: é que nada seja aprovado sem
+// confirmação, que uma falha no meio do lote não esconda o que foi feito, e
+// que o estado incerto seja dito em voz alta.
+
+const purchaseOrders = await import("../src/apis/purchase-orders.js");
+
+test("nada é autorizado sem confirm — a primeira chamada só devolve a prévia", async () => {
+  const req = requestFalso({
+    "/purchase-orders/1": { purchaseOrderId: 1, date: "2026-07-01", supplierId: 10, buildingId: 20 },
+    "/purchase-orders/1/items": paginado([{ productId: 1, quantity: 2, unitPrice: 500, totalPrice: 1000 }]),
+    "/creditors/10": { id: 10, name: "FORNECEDOR ALFA" },
+    "/cost-centers/20": { id: 20, name: "OBRA CENTRO" },
+  });
+
+  const previa = await purchaseApproval.previaDeAprovacao(req, {}, [1]);
+  assert.equal(previa.linhas.length, 1);
+  assert.equal(previa.linhas[0].fornecedor, "FORNECEDOR ALFA", "prévia cega não é confirmação");
+  assert.equal(previa.linhas[0].obra, "OBRA CENTRO");
+  assert.equal(previa.total, 1000);
+
+  // Nenhuma escrita aconteceu ao montar a prévia.
+  const escritas = req.chamadas.filter((c) => /^(PUT|PATCH|POST|DELETE)/.test(c));
+  assert.deepEqual(escritas, [], `a prévia escreveu: ${escritas.join(", ")}`);
+});
+
+test("falha no meio do lote não esconde o que já foi aprovado", async () => {
+  const chamadas = [];
+  const req = async (metodo, endpoint) => {
+    chamadas.push(`${metodo} ${endpoint}`);
+    if (endpoint.includes("/2/")) {
+      return { success: false, error: "HTTP 409", message: "Pedido já autorizado" };
+    }
+    return { success: true, data: null, status_code: 204 };
+  };
+
+  const r = await purchaseApproval.aprovarPedidosEmLote(req, [1, 2, 3]);
+
+  assert.equal(r.success, false, "lote com falha não é sucesso");
+  assert.deepEqual(r.aprovados, [1, 3], "os outros precisam ter sido aprovados");
+  assert.equal(r.falharam.length, 1);
+  assert.equal(r.falharam[0].pedido, 2);
+  assert.match(r.falharam[0].erro, /já autorizado/);
+  assert.equal(chamadas.length, 3, "não pode abortar no primeiro erro");
+});
+
+test("falha ambígua é dita em voz alta, não tratada como erro comum", async () => {
+  // Sem resposta do Sienge, a autorização pode ter sido aplicada. Repetir às
+  // cegas é o que não pode acontecer.
+  const req = async () => ({
+    success: false,
+    error: "Ambiguous Failure",
+    message: "PUT falhou sem resposta do Sienge",
+  });
+
+  const r = await purchaseApproval.aprovarPedidosEmLote(req, [7]);
+  assert.equal(r.falharam[0].estado_incerto, true);
+  assert.match(r.atencao_estado_incerto, /PODE ter sido aplicada/);
+  assert.match(r.atencao_estado_incerto, /Consulte o estado/);
+});
+
+test("autorização sem observação usa PUT; com observação, PATCH", async () => {
+  // PUT é idempotente e a camada HTTP o repete em falha de rede; PATCH não.
+  const chamadas = [];
+  const req = async (metodo, endpoint, opts) => {
+    chamadas.push({ metodo, endpoint, body: opts?.jsonData });
+    return { success: true, data: null };
+  };
+
+  await purchaseOrders.autorizarPedido(req, 42);
+  assert.equal(chamadas[0].metodo, "PUT");
+  assert.equal(chamadas[0].body, undefined);
+
+  await purchaseOrders.autorizarPedido(req, 42, "aprovado em reunião");
+  assert.equal(chamadas[1].metodo, "PATCH");
+  assert.deepEqual(chamadas[1].body, { observation: "aprovado em reunião" });
+});
+
+test("observação é truncada em 300 caracteres, não rejeitada", async () => {
+  const chamadas = [];
+  const req = async (m, e, opts) => {
+    chamadas.push(opts?.jsonData);
+    return { success: true, data: null };
+  };
+  await purchaseOrders.autorizarPedido(req, 1, "x".repeat(400));
+  assert.equal(chamadas[0].observation.length, 300);
+});
+
+test("a tool recusa lote acima do teto, com o motivo", async () => {
+  const { client } = await servidorEmMemoria();
+  try {
+    const r = JSON.parse(
+      (
+        await client.callTool({
+          name: "compras_aprovar_pedidos",
+          arguments: { pedidos: Array.from({ length: 51 }, (_, i) => i + 1), confirm: true },
+        })
+      ).content[0].text
+    );
+    assert.equal(r.success, false);
+    assert.match(r.error, /excedem o máximo de 50/);
+    assert.match(r.error, /conferível por/, "o motivo do limite precisa estar dito");
+  } finally {
+    await client.close();
+  }
+});
+
+test("lista vazia é recusada em vez de reportar sucesso vazio", async () => {
+  const { client } = await servidorEmMemoria();
+  try {
+    const r = JSON.parse(
+      (await client.callTool({ name: "compras_aprovar_pedidos", arguments: { pedidos: [] } }))
+        .content[0].text
+    );
+    assert.equal(r.success, false);
+    assert.match(r.error, /ao menos um pedido/);
+  } finally {
+    await client.close();
+  }
+});
+
+test("a tool declara confirm no schema — sem isso o gate seria decorativo", async () => {
+  const { client } = await servidorEmMemoria();
+  try {
+    const t = (await client.listTools()).tools.find((x) => x.name === "compras_aprovar_pedidos");
+    assert.ok(t, "a tool precisa estar registrada com o módulo compras carregado");
+    assert.ok("confirm" in t.inputSchema.properties);
+    assert.match(t.description, /IRREVERSÍVEL/);
   } finally {
     await client.close();
   }

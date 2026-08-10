@@ -499,3 +499,122 @@ export async function analisarPedidosParaAprovacao(makeRequest, deps = {}, opts 
 
   return resultado;
 }
+
+// %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+// APROVAÇÃO EM LOTE
+// %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+/**
+ * Teto por chamada. Não é limitação técnica: é o ponto em que a prévia deixa
+ * de ser conferível por uma pessoa. Aprovar 200 pedidos de uma vez não é uma
+ * decisão, é um acidente esperando acontecer.
+ */
+export const MAX_POR_LOTE = 50;
+
+/**
+ * Levanta o que será aprovado, para que a confirmação não seja cega.
+ *
+ * Custa uma chamada por pedido mais os cadastros — e vale: confirmar uma
+ * aprovação sem ver valor e fornecedor é o mesmo que não confirmar. Os nomes
+ * saem do cache quando já foram resolvidos numa consulta anterior da fila.
+ */
+export async function previaDeAprovacao(makeRequest, deps = {}, ids = []) {
+  const { itensPorPedido, falhas } = await buscarItensEmLote(makeRequest, ids, CONCORRENCIA);
+
+  const cabecalhos = await comFreio(ids, CONCORRENCIA, async (id) => {
+    const r = await purchaseOrders.buscarPedido(makeRequest, id);
+    return [id, r.success ? r.purchaseOrder : null];
+  });
+  const porId = new Map(cabecalhos);
+
+  const [fornecedores, obras] = await Promise.all([
+    resolverFornecedores(
+      makeRequest,
+      deps,
+      [...porId.values()].map((p) => p?.supplierId),
+      CONCORRENCIA
+    ),
+    resolverObras(
+      makeRequest,
+      deps,
+      [...porId.values()].map((p) => p?.buildingId),
+      CONCORRENCIA
+    ),
+  ]);
+
+  const linhas = [];
+  const naoEncontrados = [];
+  let total = 0;
+
+  for (const id of ids) {
+    const pedido = porId.get(id);
+    if (!pedido) {
+      naoEncontrados.push(id);
+      continue;
+    }
+    const itens = itensPorPedido.get(id) ?? [];
+    const valor = arred(itens.reduce((s, i) => s + totalDoItem(i), 0));
+    total += valor;
+
+    linhas.push({
+      pedido: id,
+      data: primeiro(pedido, DATA_PEDIDO),
+      fornecedor: fornecedores.nomes[String(pedido.supplierId)] ?? pedido.supplierId,
+      obra: obras.nomes[String(pedido.buildingId)] ?? pedido.buildingId,
+      valor,
+      itens: itens.length,
+      // Um pedido já autorizado não deveria entrar num lote de aprovação: ou
+      // é engano de quem montou a lista, ou o estado mudou desde a consulta.
+      ja_autorizado: pedido.authorized === true || undefined,
+      consistencia: pedido.consistency !== "CONSISTENT" ? pedido.consistency : undefined,
+    });
+  }
+
+  return {
+    linhas,
+    total: arred(total),
+    naoEncontrados,
+    itensNaoLidos: falhas.map((f) => f.pedido),
+  };
+}
+
+/**
+ * Autoriza vários pedidos, um a um, e relata cada resultado.
+ *
+ * **Sequencial de propósito.** Paralelizar economizaria segundos e custaria
+ * clareza: numa falha no meio do lote, o que importa é saber exatamente o que
+ * foi aprovado e o que não foi. Com escrita, essa resposta vale mais que a
+ * latência — e o volume aqui é de dezenas, não de milhares.
+ *
+ * Nunca aborta no primeiro erro: um pedido que falha não deve impedir os
+ * seguintes, e interromper deixaria o lote num estado que ninguém pediu.
+ */
+export async function aprovarPedidosEmLote(makeRequest, ids = [], observacao = null) {
+  const aprovados = [];
+  const falharam = [];
+
+  for (const id of ids) {
+    const r = await purchaseOrders.autorizarPedido(makeRequest, id, observacao);
+    if (r.success) aprovados.push(id);
+    else falharam.push({ pedido: id, erro: r.details || r.error, estado_incerto: r.estado_incerto });
+  }
+
+  const incertos = falharam.filter((f) => f.estado_incerto).map((f) => f.pedido);
+
+  return {
+    success: falharam.length === 0,
+    aprovados,
+    falharam,
+    resumo:
+      `${aprovados.length} de ${ids.length} pedido(s) autorizado(s)` +
+      (falharam.length ? `; ${falharam.length} falhou(aram)` : ""),
+    ...(incertos.length
+      ? {
+          atencao_estado_incerto:
+            `Os pedidos ${incertos.join(", ")} falharam sem resposta do Sienge — a ` +
+            "autorização PODE ter sido aplicada. Consulte o estado deles no ERP antes " +
+            "de tentar de novo.",
+        }
+      : {}),
+  };
+}

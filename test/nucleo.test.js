@@ -48,10 +48,10 @@ test("licença assinada por outra chave é rejeitada", () => {
 // MÓDULOS
 // %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-test("catálogo cobre as 105 tools sem repetição", () => {
-  assert.equal(modules.TOOL_TAGS.size, 105);
+test("catálogo cobre as 106 tools sem repetição", () => {
+  assert.equal(modules.TOOL_TAGS.size, 106);
   const total = Object.values(modules.toolCounts()).reduce((a, b) => a + b, 0);
-  assert.equal(total, 105);
+  assert.equal(total, 106);
 });
 
 test("SIENGE_PROFILE sempre inclui o núcleo", () => {

@@ -79,6 +79,7 @@ const TOOLS_BY_MODULE = {
   ],
   compras: [
     "compras_pedidos_para_aprovar",
+    "compras_aprovar_pedidos",
     "compras_historico_preco_insumo",
     "get_sienge_purchase_orders",
     "get_sienge_purchase_requests",

@@ -112,6 +112,50 @@ export async function buscarItens(makeRequest, purchaseOrderId, opts = {}) {
   );
 }
 
+const OBSERVACAO_MAX = 300;
+
+/**
+ * Autoriza ou reprova um pedido.
+ *
+ * O spec do Sienge exige PATCH quando há observação e aceita PUT quando não
+ * há. A diferença importa para o retry: PUT é idempotente e a camada HTTP o
+ * repete em falha de rede — autorizar duas vezes deixa o pedido no mesmo
+ * estado. PATCH fica de fora da lista de idempotentes, então uma falha
+ * ambígua com observação volta como tal, sem repetir.
+ */
+async function decidir(makeRequest, purchaseOrderId, operacao, observacao) {
+  const endpoint = `${RECURSO}/${encodeURIComponent(purchaseOrderId)}/${operacao}`;
+
+  const resposta = observacao
+    ? await makeRequest("PATCH", endpoint, {
+        jsonData: { observation: String(observacao).slice(0, OBSERVACAO_MAX) },
+      })
+    : await makeRequest("PUT", endpoint);
+
+  if (!resposta.success) {
+    return {
+      success: false,
+      pedido: purchaseOrderId,
+      error: resposta.error,
+      details: resposta.message,
+      // Sem resposta do Sienge, o estado é incerto: quem chama precisa
+      // consultar antes de tentar de novo, não repetir às cegas.
+      estado_incerto: resposta.error === "Ambiguous Failure" || undefined,
+    };
+  }
+  return { success: true, pedido: purchaseOrderId };
+}
+
+/** PUT|PATCH /purchase-orders/{id}/authorize — autoriza o pedido. */
+export function autorizarPedido(makeRequest, purchaseOrderId, observacao = null) {
+  return decidir(makeRequest, purchaseOrderId, "authorize", observacao);
+}
+
+/** PUT|PATCH /purchase-orders/{id}/disapprove — reprova o pedido. */
+export function reprovarPedido(makeRequest, purchaseOrderId, observacao = null) {
+  return decidir(makeRequest, purchaseOrderId, "disapprove", observacao);
+}
+
 /** GET /purchase-orders/{id} — um pedido específico. */
 export async function buscarPedido(makeRequest, purchaseOrderId) {
   const resposta = await makeRequest(

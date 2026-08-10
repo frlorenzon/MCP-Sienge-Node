@@ -5044,5 +5044,46 @@
     "tags": [
       "nucleo"
     ]
+  },
+  {
+    "name": "compras_aprovar_pedidos",
+    "description": "Autoriza um ou mais pedidos de compra de uma vez. AÇÃO IRREVERSÍVEL pelo MCP: desfazer só no próprio Sienge.\n\nNa primeira chamada, sem `confirm`, devolve uma prévia com fornecedor, obra, valor e número de itens de cada pedido, mais o total. Mostre essa prévia ao usuário, aguarde a aprovação dele e só então repita com confirm: true.\n\nAprova um a um e relata cada resultado: um pedido que falha não impede os seguintes, e a resposta separa o que foi autorizado do que não foi. Máximo de 50 por chamada.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "pedidos": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          },
+          "description": "ids dos pedidos de compra a autorizar, como vêm em `pedido` na fila"
+        },
+        "observacao": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 300
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "justificativa registrada no Sienge, até 300 caracteres"
+        },
+        "confirm": {
+          "type": "boolean",
+          "default": false,
+          "description": "proteção contra execução acidental — só executa com confirm=true. Sem ele, devolve a prévia do que seria aprovado"
+        }
+      },
+      "required": [
+        "pedidos"
+      ],
+      "additionalProperties": false,
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    },
+    "tags": [
+      "compras"
+    ]
   }
 ]

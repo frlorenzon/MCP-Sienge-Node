@@ -73,6 +73,36 @@ caso.
 
 ---
 
+## Escrita em lote: prévia informada e falha parcial visível
+
+`compras_aprovar_pedidos` autoriza vários pedidos numa chamada. Três decisões
+que não são óbvias:
+
+**A prévia busca dados, e por isso custa chamadas.** Ela devolve fornecedor,
+obra, valor e contagem de itens de cada pedido — não só os ids. Confirmar uma
+aprovação vendo apenas `[123, 456]` é o mesmo que não confirmar; o gate viraria
+um clique. As chamadas extras são o preço de a confirmação ser informada.
+
+**A execução é sequencial.** Paralelizar economizaria segundos e custaria
+clareza: quando algo falha no meio do lote, o que importa é saber exatamente o
+que foi aprovado e o que não foi. Com escrita, essa resposta vale mais que a
+latência — e o volume é de dezenas, não de milhares.
+
+**Nunca aborta no primeiro erro.** Um pedido que falha não impede os seguintes,
+e a resposta separa `aprovados` de `falharam`. Interromper deixaria o lote num
+estado que ninguém pediu e que ninguém sabe qual é.
+
+O teto de 50 por chamada não é limitação técnica: é o ponto em que a prévia
+deixa de ser conferível por uma pessoa.
+
+`PUT .../authorize` é usado quando não há observação, `PATCH` quando há — é o
+que o spec do Sienge exige. A diferença importa para o retry: PUT está entre os
+métodos idempotentes e é repetido em falha de rede (autorizar duas vezes deixa
+o pedido no mesmo estado); PATCH não é, então uma falha ambígua com observação
+volta como `estado_incerto`, dizendo para consultar o ERP antes de repetir.
+
+---
+
 ## Retry: quando repetir é seguro
 
 Um timeout não diz se a requisição chegou. Repetir um `POST` cujo timeout

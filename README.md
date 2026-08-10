@@ -142,7 +142,7 @@ demanda:
 
 ```
 subida                       6 tools    ~780 tokens
-+ carregar_compras           7 tools  ~1.160 tokens
++ carregar_compras           8 tools  ~1.560 tokens
 ```
 
 Com o modo profundo habilitado — que é exceção — somam-se duas tools e ~535
@@ -163,13 +163,13 @@ dizer `all` explicitamente.
 
 ## Estado
 
-**Núcleo e a primeira tool de compras implementados** — 9 das 105 tools do
+**Núcleo e a primeira tool de compras implementados** — 10 das 106 tools do
 catálogo, com toda a infraestrutura compartilhada pronta.
 
 | Módulo | Tools | Estado |
 |---|---|---|
 | `nucleo` | 8 | ✅ implementado |
-| `compras` | 1 de 10 | 🔨 em andamento |
+| `compras` | 2 de 11 | 🔨 em andamento |
 | `compras_api` | 33 | coberto por `sienge_api_call` |
 | `titulos`, `financeiro`, `contratos`, `cotacoes` | 54 | pendente |
 
@@ -186,6 +186,7 @@ catálogo, com toda a infraestrutura compartilhada pronta.
 | `sienge_api_endpoints` | quais endpoints existem, por recurso — só com `SIENGE_DEEP_MODE=on` |
 | `sienge_api_call` | chama um endpoint direto — só com `SIENGE_DEEP_MODE=on` |
 | `compras_pedidos_para_aprovar` | a fila de aprovação resolvida numa chamada |
+| `compras_aprovar_pedidos` | autoriza pedidos em lote — prévia primeiro, execução só com `confirm` |
 
 ## Modo profundo — desligado, e é para continuar assim
 
