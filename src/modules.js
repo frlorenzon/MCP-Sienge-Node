@@ -63,10 +63,16 @@ export const MODULES = {
       "itens, insumos e fornecedores resolvidos, histórico de preço por " +
       "insumo, aprovação de pedidos e solicitações, lançamento de nota. " +
       "Atende a maior parte das perguntas sobre compras sem `compras_api`.",
+    // O gatilho nomeia solicitação junto de pedido de propósito: são coisas
+    // diferentes no Sienge, e quem pergunta raramente sabe qual das duas quer.
+    // "Antes de tentar responder" também é deliberado — carregar depois de já
+    // ter procurado a ferramenta é tarde: nesse ponto o modelo já concluiu que
+    // não existe tool para o assunto.
     chamada:
       "Carrega as ferramentas de compras: fila de pedidos pendentes de aprovação, " +
-      "já com itens, insumos, fornecedores e obras resolvidos. Chame quando a " +
-      "conversa for sobre pedidos de compra, aprovação ou fornecedores.",
+      "já com itens, insumos, fornecedores e obras resolvidos, mais a aprovação " +
+      "de pedidos e de solicitações. Chame assim que a conversa mencionar compras, " +
+      "pedido, solicitação, aprovação ou fornecedor — antes de tentar responder.",
   },
   compras_api: {
     descricao:
