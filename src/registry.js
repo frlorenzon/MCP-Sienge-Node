@@ -177,6 +177,16 @@ export function registerTool(server, spec) {
       })
   );
 
+  // O SDK injeta `execution: { taskSupport: "forbidden" }` em toda tool
+  // registrada, e o valor é redundante: o próprio spec diz que a ausência do
+  // campo já significa "forbidden", e o cliente só reage quando ele é
+  // "required" ou "optional". São 40 caracteres por tool em toda resposta de
+  // tools/list — 108 tokens com 10 tools, 324 com 30.
+  //
+  // Se uma versão futura do SDK mudar essa estrutura, o campo volta a
+  // aparecer: perde-se a economia, nada quebra.
+  handle.execution = undefined;
+
   registered.set(name, { handle, tags });
   return handle;
 }

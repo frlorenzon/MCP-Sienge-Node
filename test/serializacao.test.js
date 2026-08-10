@@ -133,3 +133,32 @@ test("estrutura profunda não trava a serialização", async () => {
   assert.ok(texto.length > 0);
   assert.ok(JSON.parse(texto).success);
 });
+
+test("o catálogo não carrega o campo redundante que o SDK injeta", async () => {
+  // `execution: { taskSupport: "forbidden" }` é o padrão do próprio spec
+  // quando o campo está ausente, e o cliente só reage a "required"/"optional".
+  // Enviá-lo custa 40 caracteres por tool em toda resposta de tools/list.
+  const { buildServer } = await import("../src/index.js");
+  const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");
+  const { InMemoryTransport } = await import("@modelcontextprotocol/sdk/inMemory.js");
+
+  const { server } = buildServer();
+  const [ct, st] = InMemoryTransport.createLinkedPair();
+  const client = new Client({ name: "t", version: "1.0.0" });
+  await Promise.all([client.connect(ct), server.connect(st)]);
+
+  try {
+    const { tools } = await client.listTools();
+    assert.ok(tools.length > 0);
+    for (const t of tools) {
+      assert.equal(t.execution, undefined, `${t.name} ainda carrega 'execution'`);
+    }
+    assert.doesNotMatch(JSON.stringify(tools), /taskSupport/);
+
+    // E as tools continuam chamáveis — o campo não era necessário para isso.
+    const r = await client.callTool({ name: "consultar_cota", arguments: {} });
+    assert.ok(r.content?.[0]?.text, "a tool precisa continuar respondendo");
+  } finally {
+    await client.close();
+  }
+});

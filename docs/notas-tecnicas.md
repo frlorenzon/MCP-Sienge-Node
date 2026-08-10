@@ -100,6 +100,29 @@ caso.
 
 ---
 
+## O campo que o SDK injeta e não precisa ser enviado
+
+O SDK anexa `execution: { taskSupport: "forbidden" }` a toda tool registrada,
+sem que `registerTool` ofereça como desligar. São 40 caracteres por tool em
+**toda** resposta de `tools/list` — 108 tokens com 10 tools, 324 com 30.
+
+O valor é redundante. O próprio spec do protocolo diz, no comentário do campo:
+*"If not present, defaults to forbidden"*. E o cliente do SDK só age quando o
+valor é `required` ou `optional`: ausente e `forbidden` seguem o mesmo caminho.
+
+Por isso `registry.js` faz `handle.execution = undefined` depois de registrar.
+Não é hack semântico — é deixar de enviar o padrão explicitamente.
+
+Se uma versão futura do SDK mudar essa estrutura, o campo volta a aparecer:
+perde-se a economia, nada quebra. Coberto por teste em
+`test/serializacao.test.js`.
+
+Nota de medição: `title`, `annotations` e `_meta` também aparecem no objeto,
+mas custam **zero** — são `undefined` e somem no `JSON.stringify`. Só o
+`execution` tem valor concreto.
+
+---
+
 ## Escrita em lote: prévia informada e falha parcial visível
 
 `compras_aprovar_pedidos` autoriza vários pedidos numa chamada. Três decisões
