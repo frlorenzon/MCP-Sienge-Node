@@ -1,6 +1,6 @@
 {
   "name": "mcp-sienge-node",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Servidor MCP para a API do Sienge — consultas e operações do ERP expostas como ferramentas para assistentes de IA.",
   "type": "module",
   "main": "src/index.js",
