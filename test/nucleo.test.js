@@ -208,3 +208,42 @@ test("descarregar_modulos recusa nome desconhecido", async () => {
     await client.close();
   }
 });
+
+test("o modo profundo vem desligado, e some por inteiro do catálogo", async () => {
+  // O padrão é a decisão: leitura de todos os endpoints com a credencial
+  // configurada é acesso amplo demais para vir ligado sem ninguém escolher.
+  const anterior = process.env.SIENGE_DEEP_MODE;
+  delete process.env.SIENGE_DEEP_MODE;
+  try {
+    const { client } = await servidorEmMemoria();
+    const nomes = (await client.listTools()).tools.map((t) => t.name);
+    assert.ok(!nomes.includes("sienge_api_call"));
+    assert.ok(!nomes.includes("sienge_api_endpoints"));
+    await client.close();
+  } finally {
+    if (anterior !== undefined) process.env.SIENGE_DEEP_MODE = anterior;
+  }
+});
+
+test("SIENGE_DEEP_MODE aceita as formas usuais de dizer sim", async () => {
+  const anterior = process.env.SIENGE_DEEP_MODE;
+  try {
+    for (const valor of ["on", "true", "1", "sim", "ON"]) {
+      process.env.SIENGE_DEEP_MODE = valor;
+      const { client } = await servidorEmMemoria();
+      const nomes = (await client.listTools()).tools.map((t) => t.name);
+      assert.ok(nomes.includes("sienge_api_call"), `'${valor}' devia habilitar`);
+      await client.close();
+    }
+    for (const valor of ["off", "false", "0", "", "talvez"]) {
+      process.env.SIENGE_DEEP_MODE = valor;
+      const { client } = await servidorEmMemoria();
+      const nomes = (await client.listTools()).tools.map((t) => t.name);
+      assert.ok(!nomes.includes("sienge_api_call"), `'${valor}' não devia habilitar`);
+      await client.close();
+    }
+  } finally {
+    if (anterior !== undefined) process.env.SIENGE_DEEP_MODE = anterior;
+    else delete process.env.SIENGE_DEEP_MODE;
+  }
+});

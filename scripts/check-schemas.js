@@ -38,8 +38,10 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 const raiz = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 // Todas as tools precisam estar visíveis para serem conferidas, qualquer que
-// seja o perfil configurado no ambiente de quem roda o script.
+// seja a configuração de quem roda o script — inclusive o modo profundo, que
+// vem desligado por padrão.
 process.env.SIENGE_PROFILE = "all";
+process.env.SIENGE_DEEP_MODE = "on";
 
 const { buildServer } = await import(path.join(raiz, "src/index.js"));
 

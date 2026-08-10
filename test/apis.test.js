@@ -14,6 +14,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const raiz = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+
+// sienge_api_endpoints só existe com o modo profundo habilitado.
+process.env.SIENGE_DEEP_MODE = "on";
 const dirApis = path.join(raiz, "src/apis");
 
 const arquivos = fs

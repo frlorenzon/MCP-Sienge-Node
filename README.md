@@ -57,6 +57,7 @@ necessário: ele compõe a URL de toda chamada.
         "SIENGE_API_KEY": "sua-chave",
         "SIENGE_SUBDOMAIN": "sua-empresa",
         "SIENGE_PROFILE": "compras",
+        "SIENGE_DEEP_MODE": "off",
         "SIENGE_MCP_API_PACKAGE": "start",
         "SIENGE_MCP_LICENSE_KEY": "sua-licenca",
         "SIENGE_MCP_LOG_LEVEL": "INFO",
@@ -87,21 +88,65 @@ chamada na API.
 | `SIENGE_API_KEY` | uma das duas | Bearer Token |
 | `SIENGE_USERNAME` + `SIENGE_PASSWORD` | uma das duas | Basic Auth |
 | `SIENGE_PROFILE` | — | recorte inicial. **Vazio = só o núcleo** (padrão); `all` carrega tudo; ou fixe: `compras,financeiro` |
+| `SIENGE_DEEP_MODE` | — | acesso direto aos endpoints. **Desligado por padrão, e a instalação normal não precisa dele** |
 | `SIENGE_MCP_API_PACKAGE` | — | pacote contratado, para calcular o saldo diário de cota |
 | `SIENGE_MCP_LICENSE_KEY` | — | licença; sem ela o servidor funciona e avisa uma vez por sessão |
 
-Lista completa, incluindo caminhos de log e auditoria, em
-[`.env.example`](.env.example).
+## Onde ficam os arquivos
+
+O servidor grava três coisas em disco. Por padrão, tudo em **`~/.sienge-mcp/`**
+— o diretório do usuário, nunca a pasta do pacote (que pode nem ser gravável
+depois de instalado via npm) nem o diretório de trabalho (que depende de onde o
+cliente MCP subiu o processo).
+
+| Arquivo | O que é | Cresce? |
+|---|---|---|
+| `audit.log` | uma linha JSON por operação de **escrita** no ERP: quem, quando, qual tool, qual payload | **nunca é truncado** — é evidência |
+| `sienge-mcp.log` | diagnóstico: requisições, retentativas, erros | rotaciona a cada 5 MB, pode ser descartado |
+| `api-quota.json` | contador do consumo de cota do dia | some na virada do dia |
+
+Para mudar o diretório inteiro, defina `SIENGE_MCP_HOME` no `env` da
+configuração. Ou aponte cada arquivo em separado, quando a trilha de auditoria
+precisa ir para outro lugar — um volume com backup, por exemplo:
+
+| Variável | Padrão |
+|---|---|
+| `SIENGE_MCP_HOME` | `~/.sienge-mcp` |
+| `SIENGE_MCP_AUDIT_LOG` | `<home>/audit.log` |
+| `SIENGE_MCP_LOG_FILE` | `<home>/sienge-mcp.log` |
+| `SIENGE_MCP_QUOTA_COUNTER` | `<home>/api-quota.json` |
+| `SIENGE_MCP_LOG_LEVEL` | `INFO` — use `DEBUG` para investigar |
+
+O servidor **nunca escreve em stdout**: sob transporte stdio, stdout é o canal
+do protocolo MCP e um byte fora do lugar corromperia a sessão. Avisos e erros
+saem em stderr, que é o que o cliente costuma mostrar.
+
+### Ajuste fino
+
+Raramente necessárias, mas existem:
+
+| Variável | Padrão | Para quê |
+|---|---|---|
+| `SIENGE_BASE_URL` | `https://api.sienge.com.br` | trocar o host da API |
+| `REQUEST_TIMEOUT` | `30` | segundos por requisição |
+| `SIENGE_COMPRAS_VALOR_ALERTA` | `50000` | acima disso, o pedido ganha alerta de valor |
+| `SIENGE_COMPRAS_TOLERANCIA_PRECO` | `0.20` | quanto um item pode passar do menor preço do lote antes de virar alerta |
+| `SIENGE_COMPRAS_CONCORRENCIA` | `6` | requisições em paralelo na varredura; o freio existe porque a cota é diária |
+
+Lista completa das variáveis em [`.env.example`](.env.example).
 
 ## Como o catálogo é carregado
 
-O servidor sobe com **8 tools e ~1.300 tokens** de contexto. As demais entram
-sob demanda:
+O servidor sobe com **6 tools e ~780 tokens** de contexto. As demais entram sob
+demanda:
 
 ```
-subida             8 tools   ~1.300 tokens
-carregar_compras   9 tools   ~1.700 tokens
+subida                       6 tools    ~780 tokens
++ carregar_compras           7 tools  ~1.160 tokens
 ```
+
+Com o modo profundo habilitado — que é exceção — somam-se duas tools e ~535
+tokens.
 
 Isso importa porque o catálogo é reenviado a cada mensagem. Carregar as 105
 tools de uma vez custaria ~19.000 tokens em toda requisição, mesmo numa
@@ -132,18 +177,62 @@ catálogo, com toda a infraestrutura compartilhada pronta.
 | `describe_purchase_process` | o processo de compras de ponta a ponta |
 | `carregar_compras` | traz as ferramentas de compras |
 | `descarregar_modulos` | libera o contexto de módulos já carregados |
-| `sienge_api_endpoints` | quais endpoints existem, por recurso |
-| `sienge_api_call` | chama um endpoint direto (só leitura, exige `deep_mode`) |
+| `sienge_api_endpoints` | quais endpoints existem, por recurso — só com `SIENGE_DEEP_MODE=on` |
+| `sienge_api_call` | chama um endpoint direto — só com `SIENGE_DEEP_MODE=on` |
 | `compras_pedidos_para_aprovar` | a fila de aprovação resolvida numa chamada |
 
-## Modo profundo
+## Modo profundo — desligado, e é para continuar assim
+
+> ⚠️ **Recurso de exceção.** Vem desligado e a instalação normal não precisa
+> dele. Ligue apenas se uma consulta específica não tiver tool que a cubra, e
+> considere desligar de volta depois.
+
+O uso corrente é pelas tools de negócio: elas resolvem o join no servidor,
+custam dezenas de vezes menos chamadas e têm comportamento testado. O modo
+profundo dá ao assistente leitura de **todos** os endpoints declarados com a
+credencial configurada — é acesso amplo, sem normalização e sem as validações
+que as tools específicas fazem.
+
+Três razões para deixá-lo desligado:
+
+- **Cota** — uma varredura mal-encaminhada consome o orçamento diário da API
+- **Previsibilidade** — a resposta é o que a API der, crua
+- **Contexto** — desligado, as duas tools não são registradas e não custam os
+  ~535 tokens
+
+Desligado é o padrão: basta não definir `SIENGE_DEEP_MODE`.
+
+<details>
+<summary>Se precisar mesmo habilitar</summary>
+
+```json
+{
+  "mcpServers": {
+    "sienge": {
+      "command": "npx",
+      "args": ["-y", "mcp-sienge-node"],
+      "env": {
+        "SIENGE_API_KEY": "sua-chave",
+        "SIENGE_SUBDOMAIN": "sua-empresa",
+        "SIENGE_DEEP_MODE": "on"
+      }
+    }
+  }
+}
+```
+
+Não confunda com o parâmetro `deep_mode: true`, descrito adiante: **esta
+variável é você decidindo se a porta existe; o parâmetro é o modelo declarando
+que está atravessando de propósito.** Os dois são necessários.
+
+</details>
+
+### Como funciona, quando habilitado
 
 A API do Sienge tem centenas de endpoints. Criar uma tool para cada um
 custaria dezenas de milhares de tokens de contexto **em toda mensagem** — e a
 maioria nunca seria usada. As tools de negócio cobrem o dia a dia; o modo
 profundo cobre o resto, com duas ferramentas em vez de um catálogo.
-
-### Como funciona
 
 **1. Descobrir o endpoint.** `sienge_api_endpoints` responde em dois níveis,
 para que o modelo pague só pelo que consultar:
@@ -228,8 +317,9 @@ escaparia do prefixo da API e alcançaria outra rota do mesmo host.
   nunca é truncado
 - **Gate de confirmação** para operações de alto impacto: a primeira chamada
   devolve uma prévia, e só executa com `confirm: true`
-- **Modo profundo** — `sienge_api_call` alcança 59 endpoints da API por ~535
-  tokens, no lugar dos milhares que uma tool por endpoint custaria
+- **Modo profundo opcional** — quando habilitado, `sienge_api_call` alcança 59
+  endpoints da API por ~535 tokens, no lugar dos milhares que uma tool por
+  endpoint custaria
 - **Licenciamento Ed25519 offline**, com `node:crypto`, sem dependência externa
 
 ## Desenvolvimento

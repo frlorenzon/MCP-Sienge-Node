@@ -12,6 +12,8 @@ import assert from "node:assert/strict";
 process.env.SIENGE_MCP_HOME = "/tmp/sienge-mcp-test";
 process.env.SIENGE_API_KEY = "chave-de-teste";
 process.env.SIENGE_SUBDOMAIN = "empresa";
+// As tools do modo profundo só são registradas quando ele está habilitado.
+process.env.SIENGE_DEEP_MODE = "on";
 
 const purchaseApproval = await import("../src/workflows/purchaseApproval.js");
 

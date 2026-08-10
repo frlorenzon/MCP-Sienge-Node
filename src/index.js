@@ -53,7 +53,7 @@ export function buildServer() {
 
   registrarNucleo(server);
   registrarModulos(server);
-  registrarDeep(server);
+  const deepAtivo = registrarDeep(server);
   registrarCompras(server);
   definirModulosCarregados(perfilModulos);
 
@@ -61,11 +61,11 @@ export function buildServer() {
   // tudo, depois habilita as tags pedidas) sobre o que já está registrado.
   if (perfilModulos !== null) applyProfile(perfilModulos);
 
-  return { server, perfilModulos };
+  return { server, perfilModulos, deepAtivo };
 }
 
 async function main() {
-  const { server, perfilModulos } = buildServer();
+  const { server, perfilModulos, deepAtivo } = buildServer();
 
   const authInfo = getAuthInfo();
   const contagem = tagRegistry.toolCounts();
@@ -76,6 +76,7 @@ async function main() {
     configured: authInfo.configured,
     base_url: authInfo.base_url,
     perfil: perfilModulos === null ? "todos os módulos" : [...perfilModulos].sort().join(", "),
+    modo_profundo: deepAtivo ? "habilitado" : "desligado (SIENGE_DEEP_MODE)",
     tools_no_catalogo: total,
   });
 

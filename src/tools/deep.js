@@ -36,6 +36,7 @@ import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { registerTool } from "../registry.js";
 import { makeSiengeRequest, makeSiengeBulkRequest } from "../http/client.js";
+import { deepModeHabilitado } from "../config.js";
 
 const aqui = path.dirname(fileURLToPath(import.meta.url));
 
@@ -60,7 +61,19 @@ function recursoDe(p) {
   return p.split("/")[1] ?? "";
 }
 
+/**
+ * Registra as tools do modo profundo, se a instalação as habilitou.
+ *
+ * Quando desligado, elas não são registradas — não aparecem em `tools/list` e
+ * não custam os ~535 tokens. Nada é dito ao modelo sobre a existência de um
+ * modo desabilitado: seria pagar contexto para anunciar o que o administrador
+ * decidiu não oferecer.
+ *
+ * @returns {boolean} se as tools foram registradas
+ */
 export function registrarDeep(server) {
+  if (!deepModeHabilitado()) return false;
+
   registerTool(server, {
     name: "sienge_api_endpoints",
     description:
@@ -188,4 +201,6 @@ export function registrarDeep(server) {
       return base;
     },
   });
+
+  return true;
 }

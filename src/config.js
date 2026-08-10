@@ -24,6 +24,28 @@ export function cleanSubdomain() {
   return (process.env.SIENGE_SUBDOMAIN || "").trim().replace(/^\/+|\/+$/g, "");
 }
 
+export const DEEP_MODE_ENV_VAR = "SIENGE_DEEP_MODE";
+
+const LIGADO = new Set(["on", "true", "1", "sim", "yes", "ligado"]);
+
+/**
+ * O modo profundo está habilitado nesta instalação?
+ *
+ * **Desligado por padrão**, e o padrão é a decisão importante aqui. O modo
+ * profundo dá ao assistente leitura de todos os endpoints declarados, com a
+ * credencial configurada — é acesso amplo, e amplo demais para vir ligado sem
+ * ninguém ter escolhido. Quem precisa dele liga; quem não precisa não paga o
+ * contexto das duas tools nem corre o risco de uma varredura mal-encaminhada
+ * consumir a cota do dia.
+ *
+ * O parâmetro `deep_mode: true` das tools é outra coisa, e as duas se
+ * complementam: esta variável é o administrador decidindo se a porta existe;
+ * o parâmetro é o modelo declarando que está atravessando de propósito.
+ */
+export function deepModeHabilitado() {
+  return LIGADO.has((process.env[DEEP_MODE_ENV_VAR] || "").trim().toLowerCase());
+}
+
 /**
  * Escolhe o mecanismo de autenticação disponível: Bearer > Basic > nenhum.
  *
