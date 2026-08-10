@@ -1,7 +1,7 @@
 [
   {
-    "name": "test_sienge_connection",
-    "description": "Testa se as credenciais autenticam de fato contra a API do Sienge, com uma chamada real de baixo custo. Use para diagnosticar falha de conexão ou credencial; para apenas ver qual mecanismo está configurado, sem chamar a API, use get_auth_info.",
+    "name": "testar_conexao",
+    "description": "Testa se as credenciais autenticam de fato contra a API do Sienge, com uma chamada real de baixo custo. Use para diagnosticar falha de conexão ou credencial; para apenas ver qual mecanismo está configurado, sem chamar a API, use verificar_autenticacao.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {},
@@ -12,7 +12,7 @@
     ]
   },
   {
-    "name": "describe_purchase_process",
+    "name": "explicar_processo_compras",
     "description": "Explica o processo de compras do Sienge de ponta a ponta: as 5 etapas, quais\nsão opcionais, os caminhos válidos e os limites da API.\n\nConsulte ANTES de responder qualquer pergunta sobre solicitações, cotações,\npedidos de compra ou aprovações. Evita os erros mais comuns — procurar preço\nnuma solicitação de compra, que não tem preço, ou supor que todo pedido\nnasceu de uma solicitação.\n\nA resposta diz, por etapa, quais tools este servidor tem de fato: nem toda\netapa do processo é coberta.",
     "inputSchema": {
       "additionalProperties": false,
@@ -25,7 +25,7 @@
   },
   {
     "name": "compras_pedidos_para_aprovar",
-    "description": "Fila de pedidos de compra pendentes de aprovação, pronta para análise.\n\nNuma chamada só: pedido, data, fornecedor, obra, valor, e por item o\ninsumo, a quantidade, a unidade e o preço unitário. As divergências vêm\nmarcadas em `alertas`.\n\nUse sempre que a pergunta for \"quais pedidos preciso aprovar\" ou\nequivalente. Não monte esse percurso à mão com chamadas cruas: o\nresultado é o mesmo e custa dezenas de vezes mais.\n\n`fornecedor`, `obra` e `insumo` vêm como id na linha; os nomes estão nos\ndicionários `fornecedores`, `obras` e `insumos` no fim da resposta, cada um\nescrito uma vez só. Faça o join a partir deles — não há chamada a fazer\npara descobrir esses nomes.\n\nNão cobre anexos, apropriações nem previsões de entrega — para esses, use\nsienge_api_call com deep_mode.\n\nNão aprova nada: aprovar é ato separado, de outra pessoa. Ver\ndescribe_purchase_process().\n\nJanela fixa de 180 dias. A data volta em `data`, então recorte menor se faz\nsobre o resultado.",
+    "description": "Fila de pedidos de compra pendentes de aprovação, pronta para análise.\n\nNuma chamada só: pedido, data, fornecedor, obra, valor, e por item o\ninsumo, a quantidade, a unidade e o preço unitário. As divergências vêm\nmarcadas em `alertas`.\n\nUse sempre que a pergunta for \"quais pedidos preciso aprovar\" ou\nequivalente. Não monte esse percurso à mão com chamadas cruas: o\nresultado é o mesmo e custa dezenas de vezes mais.\n\n`fornecedor`, `obra` e `insumo` vêm como id na linha; os nomes estão nos\ndicionários `fornecedores`, `obras` e `insumos` no fim da resposta, cada um\nescrito uma vez só. Faça o join a partir deles — não há chamada a fazer\npara descobrir esses nomes.\n\nNão cobre anexos, apropriações nem previsões de entrega — para esses, use\nchamar_api com deep_mode.\n\nNão aprova nada: aprovar é ato separado, de outra pessoa. Ver\nexplicar_processo_compras().\n\nJanela fixa de 180 dias. A data volta em `data`, então recorte menor se faz\nsobre o resultado.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -55,7 +55,7 @@
   },
   {
     "name": "compras_historico_preco_insumo",
-    "description": "O que a empresa já pagou por um insumo, por fornecedor, no período.\n\nÉ a referência INTERNA de preço — o contraponto barato à pesquisa de preço\nde mercado. Antes de buscar preço na web para julgar um item de pedido,\nconsulte aqui: o histórico da própria empresa costuma bastar, e custa\nmuito menos que uma busca externa por insumo.\n\n⚠️ CUSTO DE COTA: a primeira chamada numa janela varre os pedidos do período\ne lê os itens de cada um (1 + N chamadas REST). O índice fica em cache por\n6 horas e responde qualquer outro insumo da mesma janela sem custo — então\nconsulte todos os insumos de um pedido em sequência, não espalhados ao\nlongo do dia. O campo `chamadas_api` do retorno informa o consumido; o\nsaldo do dia está em get_sienge_api_quota.\n\nDevolve menor, maior, médio e último preço, a variação percentual no\nperíodo, o recorte por fornecedor e as 10 compras mais recentes. Sem\nocorrências, diz isso explicitamente — ausência de histórico não é preço zero.",
+    "description": "O que a empresa já pagou por um insumo, por fornecedor, no período.\n\nÉ a referência INTERNA de preço — o contraponto barato à pesquisa de preço\nde mercado. Antes de buscar preço na web para julgar um item de pedido,\nconsulte aqui: o histórico da própria empresa costuma bastar, e custa\nmuito menos que uma busca externa por insumo.\n\n⚠️ CUSTO DE COTA: a primeira chamada numa janela varre os pedidos do período\ne lê os itens de cada um (1 + N chamadas REST). O índice fica em cache por\n6 horas e responde qualquer outro insumo da mesma janela sem custo — então\nconsulte todos os insumos de um pedido em sequência, não espalhados ao\nlongo do dia. O campo `chamadas_api` do retorno informa o consumido; o\nsaldo do dia está em consultar_cota.\n\nDevolve menor, maior, médio e último preço, a variação percentual no\nperíodo, o recorte por fornecedor e as 10 compras mais recentes. Sem\nocorrências, diz isso explicitamente — ausência de histórico não é preço zero.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -111,7 +111,7 @@
   },
   {
     "name": "get_sienge_purchase_orders",
-    "description": "Busca pedidos de compra, com filtros combináveis.\n\nETAPA 4 do processo de compras: a ordem da empresa para o fornecedor\nfaturar. Um pedido pode vir de uma solicitação, de uma cotação, ou de\nnenhuma das duas — compras urgentes começam direto aqui. Não presuma que\nexista solicitação por trás. Veja describe_purchase_process().",
+    "description": "Busca pedidos de compra, com filtros combináveis.\n\nETAPA 4 do processo de compras: a ordem da empresa para o fornecedor\nfaturar. Um pedido pode vir de uma solicitação, de uma cotação, ou de\nnenhuma das duas — compras urgentes começam direto aqui. Não presuma que\nexista solicitação por trás. Veja explicar_processo_compras().",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -273,7 +273,7 @@
   },
   {
     "name": "get_sienge_purchase_order_item_delivery_schedules",
-    "description": "Lista as previsões de entrega de um item de pedido de compra.\n\nÉ daqui que sai o `deliveryScheduleNumber`, o número que falta para lançar\numa nota fiscal: o vínculo entre nota e pedido não é feito pelo pedido, e\nsim pela ENTREGA PREVISTA de um item dele. Ver describe_purchase_process().\n\nCada entrega traz `sheduledQuantity` (prevista), `deliveredQuantity` (já\nentregue) e `openQuantity` (saldo) — use o saldo para saber o que ainda\nestá pendente de faturamento. Os dois primeiros campos vêm com essa grafia\nda própria API, sem o \"c\" de scheduled.\n\nPara montar o item da nota você precisa de purchaseOrderId, itemNumber\n(de get_sienge_purchase_order_items) e deliveryScheduleNumber (daqui).",
+    "description": "Lista as previsões de entrega de um item de pedido de compra.\n\nÉ daqui que sai o `deliveryScheduleNumber`, o número que falta para lançar\numa nota fiscal: o vínculo entre nota e pedido não é feito pelo pedido, e\nsim pela ENTREGA PREVISTA de um item dele. Ver explicar_processo_compras().\n\nCada entrega traz `sheduledQuantity` (prevista), `deliveredQuantity` (já\nentregue) e `openQuantity` (saldo) — use o saldo para saber o que ainda\nestá pendente de faturamento. Os dois primeiros campos vêm com essa grafia\nda própria API, sem o \"c\" de scheduled.\n\nPara montar o item da nota você precisa de purchaseOrderId, itemNumber\n(de get_sienge_purchase_order_items) e deliveryScheduleNumber (daqui).",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -654,7 +654,7 @@
   },
   {
     "name": "get_sienge_purchase_order_analysis_pdf",
-    "description": "Gera o relatório de ANÁLISE do pedido de compra, em PDF (Base64).\n\nATENÇÃO: é um documento interno de conferência, NÃO a via do pedido para\nenviar ao fornecedor. A API não expõe geração do documento do pedido para\nenvio — ver describe_purchase_process(), seção limitacoes. Não ofereça\neste relatório como substituto sem explicar a diferença.",
+    "description": "Gera o relatório de ANÁLISE do pedido de compra, em PDF (Base64).\n\nATENÇÃO: é um documento interno de conferência, NÃO a via do pedido para\nenviar ao fornecedor. A API não expõe geração do documento do pedido para\nenvio — ver explicar_processo_compras(), seção limitacoes. Não ofereça\neste relatório como substituto sem explicar a diferença.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -4921,7 +4921,7 @@
     ]
   },
   {
-    "name": "get_sienge_api_quota",
+    "name": "consultar_cota",
     "description": "Mostra o consumo e o saldo das cotas diárias da API do Sienge, que são duas e independentes: REST, larga, e BULK, estreita. Contas a pagar, contas a receber e itens de nota em volume consomem BULK, e é ela que esgota primeiro. Consulte antes de uma sequência dessas consultas. O saldo só é calculado com SIENGE_MCP_API_PACKAGE configurada.",
     "inputSchema": {
       "additionalProperties": false,
@@ -4933,8 +4933,8 @@
     ]
   },
   {
-    "name": "get_auth_info",
-    "description": "Mostra qual mecanismo de autenticação está configurado (Bearer Token ou Basic Auth) e se as credenciais estão completas. Não chama a API — para verificar se elas de fato funcionam, use test_sienge_connection.",
+    "name": "verificar_autenticacao",
+    "description": "Mostra qual mecanismo de autenticação está configurado (Bearer Token ou Basic Auth) e se as credenciais estão completas. Não chama a API — para verificar se elas de fato funcionam, use testar_conexao.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {},
@@ -4945,8 +4945,8 @@
     ]
   },
   {
-    "name": "sienge_api_call",
-    "description": "Chama um endpoint da API do Sienge diretamente, para leituras que as tools de negócio não cobrem — anexos, apropriações, previsões de entrega e afins.\n\nSó leitura (GET). Antes de usar, verifique se existe tool específica para o que precisa: elas resolvem o join no servidor e custam muito menos chamadas. Esta é o caminho para o caso não previsto, não o atalho para o caso comum.\n\nUse sienge_api_endpoints para descobrir o path. Se errar, a resposta sugere os endpoints daquele recurso.\n\nExige deep_mode: true.",
+    "name": "chamar_api",
+    "description": "Chama um endpoint da API do Sienge diretamente, para leituras que as tools de negócio não cobrem — anexos, apropriações, previsões de entrega e afins.\n\nSó leitura (GET). Antes de usar, verifique se existe tool específica para o que precisa: elas resolvem o join no servidor e custam muito menos chamadas. Esta é o caminho para o caso não previsto, não o atalho para o caso comum.\n\nUse listar_endpoints_api para descobrir o path. Se errar, a resposta sugere os endpoints daquele recurso.\n\nExige deep_mode: true.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -4989,8 +4989,8 @@
     ]
   },
   {
-    "name": "sienge_api_endpoints",
-    "description": "Lista os endpoints da API do Sienge conhecidos por este servidor, para montar uma chamada com sienge_api_call.\n\nSem argumento, devolve só os nomes dos recursos. Com `recurso`, devolve os endpoints daquele recurso — consulte assim para não pagar o inventário inteiro por um caminho só.",
+    "name": "listar_endpoints_api",
+    "description": "Lista os endpoints da API do Sienge conhecidos por este servidor, para montar uma chamada com chamar_api.\n\nSem argumento, devolve só os nomes dos recursos. Com `recurso`, devolve os endpoints daquele recurso — consulte assim para não pagar o inventário inteiro por um caminho só.",
     "inputSchema": {
       "type": "object",
       "properties": {

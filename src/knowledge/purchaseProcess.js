@@ -62,7 +62,7 @@ function recortarEtapa(etapa, visiveis, registradas, comoCarregar) {
     recortada.cobertura_mcp = "sem tool dedicada nesta versão";
     recortada.como_fazer =
       "Não há tool específica para esta etapa aqui. Consulte a API diretamente " +
-      "com sienge_api_endpoints e sienge_api_call — exigem SIENGE_DEEP_MODE=on " +
+      "com listar_endpoints_api e chamar_api — exigem SIENGE_DEEP_MODE=on " +
       "na configuração do servidor. Operações de escrita não têm caminho: " +
       "precisam ser feitas no próprio Sienge.";
     // `por_onde_comecar` aponta para uma tool que não existe: seguiria mandando
@@ -100,7 +100,7 @@ export async function describePurchaseProcess(estado = null) {
     etapas,
     aviso_de_cobertura:
       `Esta versão do servidor tem tools para ${cobertas} das ${etapas.length} ` +
-      "etapas. As demais só são alcançáveis pela API direta (sienge_api_call, " +
+      "etapas. As demais só são alcançáveis pela API direta (chamar_api, " +
       "que exige SIENGE_DEEP_MODE=on na configuração) ou pelo próprio Sienge. " +
       "As listas de `tools` abaixo já refletem o que existe — não procure por " +
       "nomes que não estejam nelas.",

@@ -23,7 +23,7 @@ const { z } = await import("zod");
 async function textoDaResposta(resposta, spec = {}) {
   const server = new McpServer({ name: "t", version: "1.0.0" });
   registerTool(server, {
-    name: "test_sienge_connection", // nome do catálogo, para herdar a tag nucleo
+    name: "testar_conexao", // nome do catálogo, para herdar a tag nucleo
     description: "tool de teste",
     handler: async () => resposta,
     ...spec,
@@ -32,7 +32,7 @@ async function textoDaResposta(resposta, spec = {}) {
   const [ct, st] = InMemoryTransport.createLinkedPair();
   const client = new Client({ name: "t", version: "1.0.0" });
   await Promise.all([client.connect(ct), server.connect(st)]);
-  const r = await client.callTool({ name: "test_sienge_connection", arguments: {} });
+  const r = await client.callTool({ name: "testar_conexao", arguments: {} });
   await client.close();
   return r.content[0].text;
 }

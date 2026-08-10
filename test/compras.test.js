@@ -189,12 +189,12 @@ async function servidorEmMemoria() {
   return { client };
 }
 
-test("sienge_api_call exige deep_mode — o schema barra antes do handler", async () => {
+test("chamar_api exige deep_mode — o schema barra antes do handler", async () => {
   const { client } = await servidorEmMemoria();
   try {
     // O SDK reporta falha de validação em `isError`, não como exceção.
     for (const args of [{ path: "/creditors" }, { path: "/creditors", deep_mode: false }]) {
-      const r = await client.callTool({ name: "sienge_api_call", arguments: args });
+      const r = await client.callTool({ name: "chamar_api", arguments: args });
       assert.equal(r.isError, true, `aceitou ${JSON.stringify(args)}`);
       assert.match(r.content[0].text, /deep_mode/);
     }
@@ -203,7 +203,7 @@ test("sienge_api_call exige deep_mode — o schema barra antes do handler", asyn
   }
 });
 
-test("sienge_api_call não aceita path fora do formato", async () => {
+test("chamar_api não aceita path fora do formato", async () => {
   const { client } = await servidorEmMemoria();
   try {
     for (const path of [
@@ -218,7 +218,7 @@ test("sienge_api_call não aceita path fora do formato", async () => {
       const r = JSON.parse(
         (
           await client.callTool({
-            name: "sienge_api_call",
+            name: "chamar_api",
             arguments: { path, deep_mode: true },
           })
         ).content[0].text
@@ -231,13 +231,13 @@ test("sienge_api_call não aceita path fora do formato", async () => {
   }
 });
 
-test("sienge_api_call não expõe escrita", async () => {
+test("chamar_api não expõe escrita", async () => {
   // Uma tool genérica que aceitasse POST contornaria o gate de confirmação:
   // um path adivinhado poderia criar título ou nota sem ninguém conferir.
   const { client } = await servidorEmMemoria();
   try {
     const { tools } = await client.listTools();
-    const t = tools.find((x) => x.name === "sienge_api_call");
+    const t = tools.find((x) => x.name === "chamar_api");
     const params = Object.keys(t.inputSchema.properties);
     assert.ok(!params.includes("method"), "não pode haver escolha de método HTTP");
     assert.ok(!params.includes("body"), "não pode haver corpo de requisição");

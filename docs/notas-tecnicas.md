@@ -4,6 +4,33 @@ Decisões que não são óbvias na leitura do código, e o motivo de cada uma.
 
 ---
 
+## Convenção de nomes das tools
+
+Os nomes são em **português**, e são um dos três únicos campos que chegam ao
+modelo — junto de `description` e `inputSchema`. Nome de função, arquivo,
+JSDoc e comentário não chegam: renomeie à vontade lá dentro, sem consequência
+para o comportamento.
+
+Três padrões, cada um com uma razão:
+
+| Padrão | Exemplo | Quando |
+|---|---|---|
+| `verbo_objeto` | `testar_conexao`, `consultar_cota` | infraestrutura e diagnóstico |
+| `dominio_acao_objeto` | `compras_aprovar_pedidos` | tools de negócio — o prefixo agrupa o módulo |
+| `carregar_<modulo>` | `carregar_compras` | carregadores; o nome é o contrato |
+
+O prefixo de domínio nas tools de negócio não é decoração: com dezenas delas,
+é o que deixa visível a qual módulo cada uma pertence sem precisar ler a
+descrição.
+
+Até a v0.4.0 metade dos nomes estava em inglês (`get_auth_info`,
+`sienge_api_call`), herança do servidor de origem. Isso não quebrava nada — a
+decisão do modelo se apoia na descrição —, mas custava previsibilidade: ao
+procurar "a tool de conexão", não havia como saber se o prefixo seria `test_`
+ou `testar_`. A v0.5.0 padronizou.
+
+---
+
 ## A regra do catálogo: nada chega ao modelo sem filtro
 
 **Nenhuma resposta pode citar uma tool sem antes conferir se ela está
@@ -28,7 +55,7 @@ o assistente se perdendo. Não é: é obediência a uma fonte errada.
 |---|---|---|
 | `list_sienge_entities` | 7 de 9 tools recomendadas não existiam | a tool acabou removida |
 | `list_sienge_modules` / `enable_sienge_modules` | 8 módulos, dos quais 7 vazios; "carregar" respondia `success: true` com zero tools novas | filtro por `contarPorTag()` |
-| `describe_purchase_process` | 37 de 38 tools inexistentes, com `"cobertura_mcp": "completa"` em toda etapa | filtro contra `registered` |
+| `explicar_processo_compras` | 37 de 38 tools inexistentes, com `"cobertura_mcp": "completa"` em toda etapa | filtro contra `registered` |
 
 Três formas diferentes, uma causa só.
 
@@ -48,7 +75,7 @@ const inexistentes = previstas.filter((t) => !registradas.has(t));
 - **existe, atrás de um `carregar_<modulo>`** → vai com `como_habilitar`, dizendo
   qual carregador chamar
 - **não implementada** → **sai da resposta**, e o item ganha um caminho
-  alternativo (`sienge_api_call`, ou "faça no próprio Sienge")
+  alternativo (`chamar_api`, ou "faça no próprio Sienge")
 
 Note a distinção entre `visiveis` e `registradas`: uma tool desabilitada pelo
 perfil existe e é alcançável; uma que nunca foi implementada, não. Confundir as

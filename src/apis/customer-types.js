@@ -4,7 +4,7 @@
  *
  * `/customer-types` — tipos de cliente.
  *
- * É o endpoint mais barato da API, e por isso `test_sienge_connection` o usa
+ * É o endpoint mais barato da API, e por isso `testar_conexao` o usa
  * como sonda: confirma credencial sem trazer volume.
  */
 

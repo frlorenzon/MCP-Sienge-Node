@@ -1,8 +1,8 @@
 /**
  * O inventário de endpoints.
  *
- * `sienge_api_endpoints` responde qual é o path de um recurso, e um 404 de
- * `sienge_api_call` sugere os endpoints conhecidos. As duas coisas só valem se
+ * `listar_endpoints_api` responde qual é o path de um recurso, e um 404 de
+ * `chamar_api` sugere os endpoints conhecidos. As duas coisas só valem se
  * o inventário refletir o que os módulos de `src/apis/` realmente chamam — um
  * inventário desatualizado é pior que nenhum, porque o modelo confia nele.
  */
@@ -15,7 +15,7 @@ import { fileURLToPath } from "node:url";
 
 const raiz = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
-// sienge_api_endpoints só existe com o modo profundo habilitado.
+// listar_endpoints_api só existe com o modo profundo habilitado.
 process.env.SIENGE_DEEP_MODE = "on";
 const dirApis = path.join(raiz, "src/apis");
 
@@ -93,7 +93,7 @@ test("contract/endpoints.json está atualizado", async () => {
   );
 });
 
-test("sienge_api_endpoints entrega a nota do recurso, quando há", async () => {
+test("listar_endpoints_api entrega a nota do recurso, quando há", async () => {
   // A nota é o que sobrou do conceito de "alcance": em vez de uma tool de
   // busca que filtra mal e se desculpa na resposta, o aviso chega antes,
   // quando o modelo ainda está escolhendo como consultar.
@@ -108,7 +108,7 @@ test("sienge_api_endpoints entrega a nota do recurso, quando há", async () => {
   try {
     const call = async (recurso) =>
       JSON.parse(
-        (await client.callTool({ name: "sienge_api_endpoints", arguments: { recurso } }))
+        (await client.callTool({ name: "listar_endpoints_api", arguments: { recurso } }))
           .content[0].text
       );
 

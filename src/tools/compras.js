@@ -5,7 +5,7 @@
  * Módulo `compras` — compras no nível da decisão.
  *
  * Uma tool por pergunta que alguém faz, não por endpoint que a API expõe.
- * A camada crua continua acessível por `sienge_api_call` com `deep_mode`, para
+ * A camada crua continua acessível por `chamar_api` com `deep_mode`, para
  * o pedido específico que este recorte não previu.
  */
 
@@ -50,9 +50,9 @@ export function registrarCompras(server) {
       "escrito uma vez só. Faça o join a partir deles — não há chamada a fazer\n" +
       "para descobrir esses nomes.\n\n" +
       "Não cobre anexos, apropriações nem previsões de entrega — para esses, use\n" +
-      "sienge_api_call com deep_mode.\n\n" +
+      "chamar_api com deep_mode.\n\n" +
       "Não aprova nada: aprovar é ato separado, de outra pessoa. Ver\n" +
-      "describe_purchase_process().\n\n" +
+      "explicar_processo_compras().\n\n" +
       "Janela fixa de 180 dias. A data volta em `data`, então recorte menor se faz\n" +
       "sobre o resultado.",
     inputSchema: {

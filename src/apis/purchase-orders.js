@@ -20,7 +20,7 @@ export const RECURSO = "/purchase-orders";
  * Declarados à mão porque são o contrato com a API, não um detalhe derivável:
  * `scripts/build-endpoints.js` monta o inventário a partir daqui, e um teste
  * garante que todo path chamado neste arquivo está nesta lista. É o que
- * permite `sienge_api_endpoints` responder sem inventar.
+ * permite `listar_endpoints_api` responder sem inventar.
  */
 export const ENDPOINTS = [
   "GET /purchase-orders",

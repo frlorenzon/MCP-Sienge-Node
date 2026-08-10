@@ -27,12 +27,12 @@ export function registrarNucleo(server) {
   // ---------- Diagnóstico ----------
 
   registerTool(server, {
-    name: "test_sienge_connection",
+    name: "testar_conexao",
     description:
       "Testa se as credenciais autenticam de fato contra a API do Sienge, com uma " +
       "chamada real de baixo custo. Use para diagnosticar falha de conexão ou " +
       "credencial; para apenas ver qual mecanismo está configurado, sem chamar a " +
-      "API, use get_auth_info.",
+      "API, use verificar_autenticacao.",
     // Latência e id da requisição são o resultado desta tool, não ruído de
     // diagnóstico a ser podado.
     manterMetadados: true,
@@ -45,16 +45,16 @@ export function registrarNucleo(server) {
   });
 
   registerTool(server, {
-    name: "get_auth_info",
+    name: "verificar_autenticacao",
     description:
       "Mostra qual mecanismo de autenticação está configurado (Bearer Token ou " +
       "Basic Auth) e se as credenciais estão completas. Não chama a API — para " +
-      "verificar se elas de fato funcionam, use test_sienge_connection.",
+      "verificar se elas de fato funcionam, use testar_conexao.",
     handler: async () => getAuthInfo(),
   });
 
   registerTool(server, {
-    name: "get_sienge_api_quota",
+    name: "consultar_cota",
     // Os números por pacote saíram daqui de propósito: a resposta traz a tabela
     // completa em `pacotes_disponiveis`, e mantê-los também na descrição é
     // pagá-los em toda requisição para entregar o que a chamada já entrega.
@@ -70,7 +70,7 @@ export function registrarNucleo(server) {
   // ---------- Conhecimento ----------
 
   registerTool(server, {
-    name: "describe_purchase_process",
+    name: "explicar_processo_compras",
     description:
       // Os dois exemplos concretos no fim custam ~35 tokens e ficam de
       // propósito: são eles que fazem o modelo chamar esta tool ANTES de

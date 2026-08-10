@@ -76,8 +76,8 @@ Outros clientes MCP (Claude Code, Cursor, Zed) usam o mesmo formato de
 ### Verificando que funcionou
 
 Depois de reiniciar, peça ao assistente: *"testa a conexão com o Sienge"*. Ele
-deve chamar `test_sienge_connection` e responder com a latência. Se a
-autenticação estiver incompleta, `get_auth_info` diz o que falta sem gastar
+deve chamar `testar_conexao` e responder com a latência. Se a
+autenticação estiver incompleta, `verificar_autenticacao` diz o que falta sem gastar
 chamada na API.
 
 ## Configuração
@@ -170,21 +170,24 @@ catálogo, com toda a infraestrutura compartilhada pronta.
 |---|---|---|
 | `nucleo` | 8 | ✅ implementado |
 | `compras` | 2 de 11 | 🔨 em andamento |
-| `compras_api` | 33 | coberto por `sienge_api_call` |
+| `compras_api` | 33 | coberto por `chamar_api` |
 | `titulos`, `financeiro`, `contratos`, `cotacoes` | 54 | pendente |
 
 ### As tools de hoje
 
+Nomes em português, em três padrões: `verbo_objeto` para infraestrutura,
+`dominio_acao` para negócio, `carregar_<modulo>` para os carregadores.
+
 | Tool | O que faz |
 |---|---|
-| `test_sienge_connection` | testa a credencial contra a API |
-| `get_auth_info` | qual mecanismo está configurado, sem chamar a API |
-| `get_sienge_api_quota` | consumo e saldo das cotas REST e BULK do dia |
-| `describe_purchase_process` | o processo de compras de ponta a ponta |
+| `testar_conexao` | testa a credencial contra a API |
+| `verificar_autenticacao` | qual mecanismo está configurado, sem chamar a API |
+| `consultar_cota` | consumo e saldo das cotas REST e BULK do dia |
+| `explicar_processo_compras` | o processo de compras de ponta a ponta |
 | `carregar_compras` | traz as ferramentas de compras |
 | `descarregar_modulos` | libera o contexto de módulos já carregados |
-| `sienge_api_endpoints` | quais endpoints existem, por recurso — só com `SIENGE_DEEP_MODE=on` |
-| `sienge_api_call` | chama um endpoint direto — só com `SIENGE_DEEP_MODE=on` |
+| `listar_endpoints_api` | quais endpoints existem, por recurso — só com `SIENGE_DEEP_MODE=on` |
+| `chamar_api` | chama um endpoint direto — só com `SIENGE_DEEP_MODE=on` |
 | `compras_pedidos_para_aprovar` | a fila de aprovação resolvida numa chamada |
 | `compras_aprovar_pedidos` | autoriza pedidos em lote — prévia primeiro, execução só com `confirm` |
 
@@ -241,15 +244,15 @@ custaria dezenas de milhares de tokens de contexto **em toda mensagem** — e a
 maioria nunca seria usada. As tools de negócio cobrem o dia a dia; o modo
 profundo cobre o resto, com duas ferramentas em vez de um catálogo.
 
-**1. Descobrir o endpoint.** `sienge_api_endpoints` responde em dois níveis,
+**1. Descobrir o endpoint.** `listar_endpoints_api` responde em dois níveis,
 para que o modelo pague só pelo que consultar:
 
 ```
-sienge_api_endpoints()
+listar_endpoints_api()
 → recursos: bills, cost-centers, creditors, customers, customer-types,
             enterprises, payment-categories, purchase-orders, units
 
-sienge_api_endpoints({ recurso: "purchase-orders" })
+listar_endpoints_api({ recurso: "purchase-orders" })
 → GET /purchase-orders
   GET /purchase-orders/{id}/items
   GET /purchase-orders/{id}/attachments
@@ -262,7 +265,7 @@ avisa antes de você errar:
 > Não há busca por nome: a API filtra apenas por cpf, cnpj e datas. Para achar
 > um cliente pelo nome, pagine ou use o documento.
 
-**2. Chamar.** `sienge_api_call` executa:
+**2. Chamar.** `chamar_api` executa:
 
 ```json
 {
@@ -324,7 +327,7 @@ escaparia do prefixo da API e alcançaria outra rota do mesmo host.
   nunca é truncado
 - **Gate de confirmação** para operações de alto impacto: a primeira chamada
   devolve uma prévia, e só executa com `confirm: true`
-- **Modo profundo opcional** — quando habilitado, `sienge_api_call` alcança 59
+- **Modo profundo opcional** — quando habilitado, `chamar_api` alcança 59
   endpoints da API por ~535 tokens, no lugar dos milhares que uma tool por
   endpoint custaria
 - **Licenciamento Ed25519 offline**, com `node:crypto`, sem dependência externa
@@ -397,7 +400,7 @@ src/
 └── tools/
     ├── nucleo.js       diagnóstico e conhecimento
     ├── modulos.js      carregar_compras, descarregar_modulos
-    ├── deep.js         sienge_api_endpoints + sienge_api_call
+    ├── deep.js         listar_endpoints_api + chamar_api
     └── compras.js      camada de intenção de compras
 ```
 
@@ -420,7 +423,7 @@ de acrescentar um:
 npm run endpoints
 ```
 
-Isso regenera `contract/endpoints.json`, que é o que `sienge_api_endpoints`
+Isso regenera `contract/endpoints.json`, que é o que `listar_endpoints_api`
 responde ao modelo e o que um 404 usa para sugerir o path certo. `npm test`
 falha se um módulo chamar um path que não declarou, ou se o inventário ficar
 para trás.

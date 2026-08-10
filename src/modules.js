@@ -68,14 +68,14 @@ export const MODULES = {
 // deste módulo lança na importação se alguma tool nova ficar sem módulo.
 const TOOLS_BY_MODULE = {
   nucleo: [
-    "test_sienge_connection",
-    "sienge_api_call",
-    "sienge_api_endpoints",
+    "testar_conexao",
+    "chamar_api",
+    "listar_endpoints_api",
     "carregar_compras",
     "descarregar_modulos",
-    "describe_purchase_process",
-    "get_sienge_api_quota",
-    "get_auth_info",
+    "explicar_processo_compras",
+    "consultar_cota",
+    "verificar_autenticacao",
   ],
   compras: [
     "compras_pedidos_para_aprovar",

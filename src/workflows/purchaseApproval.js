@@ -19,7 +19,7 @@
  *
  * Nada aqui substitui a camada de API: estas funções compõem aquelas. Para o
  * que não estiver previsto — anexos, avaliação de fornecedor, apropriações item
- * a item — o caminho é `sienge_api_call` com `deep_mode`.
+ * a item — o caminho é `chamar_api` com `deep_mode`.
  */
 
 import * as purchaseOrders from "../apis/purchase-orders.js";

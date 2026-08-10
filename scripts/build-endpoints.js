@@ -6,7 +6,7 @@
  * Monta `contract/endpoints.json` a partir do que os módulos de `src/apis/`
  * declaram em `ENDPOINTS`.
  *
- * O inventário existe para `sienge_api_endpoints` responder qual é o path de
+ * O inventário existe para `listar_endpoints_api` responder qual é o path de
  * um recurso sem que o modelo precise adivinhar — e para que a resposta de um
  * 404 possa sugerir o endpoint correto. Nasce do mesmo arquivo que faz as
  * chamadas, então não tem como envelhecer sozinho: `npm test` falha se um

@@ -101,7 +101,7 @@ function enxugar(valor, sucesso, profundidade = 0) {
  * — numa listagem de 50 registros, ~28% da resposta.
  *
  * `manterMetadados` existe para as tools cujo propósito É o diagnóstico, como
- * test_sienge_connection: nelas a latência e o id da requisição são o
+ * testar_conexao: nelas a latência e o id da requisição são o
  * resultado, não ruído.
  */
 function toContent(result, { manterMetadados = false } = {}) {

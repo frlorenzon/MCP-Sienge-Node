@@ -228,8 +228,8 @@ test("o modo profundo vem desligado, e some por inteiro do catálogo", async () 
   try {
     const { client } = await servidorEmMemoria();
     const nomes = (await client.listTools()).tools.map((t) => t.name);
-    assert.ok(!nomes.includes("sienge_api_call"));
-    assert.ok(!nomes.includes("sienge_api_endpoints"));
+    assert.ok(!nomes.includes("chamar_api"));
+    assert.ok(!nomes.includes("listar_endpoints_api"));
     await client.close();
   } finally {
     if (anterior !== undefined) process.env.SIENGE_DEEP_MODE = anterior;
@@ -243,14 +243,14 @@ test("SIENGE_DEEP_MODE aceita as formas usuais de dizer sim", async () => {
       process.env.SIENGE_DEEP_MODE = valor;
       const { client } = await servidorEmMemoria();
       const nomes = (await client.listTools()).tools.map((t) => t.name);
-      assert.ok(nomes.includes("sienge_api_call"), `'${valor}' devia habilitar`);
+      assert.ok(nomes.includes("chamar_api"), `'${valor}' devia habilitar`);
       await client.close();
     }
     for (const valor of ["off", "false", "0", "", "talvez"]) {
       process.env.SIENGE_DEEP_MODE = valor;
       const { client } = await servidorEmMemoria();
       const nomes = (await client.listTools()).tools.map((t) => t.name);
-      assert.ok(!nomes.includes("sienge_api_call"), `'${valor}' não devia habilitar`);
+      assert.ok(!nomes.includes("chamar_api"), `'${valor}' não devia habilitar`);
       await client.close();
     }
   } finally {
@@ -259,14 +259,14 @@ test("SIENGE_DEEP_MODE aceita as formas usuais de dizer sim", async () => {
   }
 });
 
-test("describe_purchase_process não recomenda tool que não existe", async () => {
+test("explicar_processo_compras não recomenda tool que não existe", async () => {
   // O conhecimento foi escrito quando havia 131 tools; aqui há 9. Citar as
   // outras 37 fazia o modelo sair procurando o que o próprio servidor
   // prometeu e não tem — e insistir, porque a fonte era confiável.
   const { client, call } = await servidorEmMemoria();
   try {
     const existentes = new Set((await client.listTools()).tools.map((t) => t.name));
-    const r = await call("describe_purchase_process");
+    const r = await call("explicar_processo_compras");
 
     const { registered } = await import("../src/registry.js");
     const todas = new Set(registered.keys());
@@ -285,7 +285,7 @@ test("describe_purchase_process não recomenda tool que não existe", async () =
       const alcancavel = etapa.tools.length + (etapa.tools_apos_carregar?.length ?? 0);
       if (alcancavel === 0) {
         assert.match(etapa.cobertura_mcp, /sem tool dedicada/);
-        assert.match(etapa.como_fazer, /sienge_api_call|próprio Sienge/);
+        assert.match(etapa.como_fazer, /chamar_api|próprio Sienge/);
         assert.equal(etapa.por_onde_comecar, undefined, "apontaria para tool inexistente");
       }
     }
@@ -298,7 +298,7 @@ test("describe_purchase_process não recomenda tool que não existe", async () =
 test("cobertura declarada bate com o que está registrado", async () => {
   const { client, call } = await servidorEmMemoria();
   try {
-    const r = await call("describe_purchase_process");
+    const r = await call("explicar_processo_compras");
     for (const e of r.etapas) {
       const alcancavel = e.tools.length + (e.tools_apos_carregar?.length ?? 0);
       if (alcancavel > 0) {

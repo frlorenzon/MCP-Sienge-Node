@@ -10,8 +10,8 @@
  * de um catálogo inteiro — a diferença é de milhares de tokens em toda
  * requisição.
  *
- * O par é deliberado. `sienge_api_endpoints` responde "qual é o path", e só
- * cobra pelo recurso consultado; `sienge_api_call` executa. Sem a primeira, a
+ * O par é deliberado. `listar_endpoints_api` responde "qual é o path", e só
+ * cobra pelo recurso consultado; `chamar_api` executa. Sem a primeira, a
  * segunda só serviria a quem já conhece a API de cor — o modelo não tem como
  * abrir a documentação no meio de uma chamada.
  *
@@ -75,10 +75,10 @@ export function registrarDeep(server) {
   if (!deepModeHabilitado()) return false;
 
   registerTool(server, {
-    name: "sienge_api_endpoints",
+    name: "listar_endpoints_api",
     description:
       "Lista os endpoints da API do Sienge conhecidos por este servidor, para " +
-      "montar uma chamada com sienge_api_call.\n\n" +
+      "montar uma chamada com chamar_api.\n\n" +
       "Sem argumento, devolve só os nomes dos recursos. Com `recurso`, devolve os " +
       "endpoints daquele recurso — consulte assim para não pagar o inventário " +
       "inteiro por um caminho só.",
@@ -122,14 +122,14 @@ export function registrarDeep(server) {
   });
 
   registerTool(server, {
-    name: "sienge_api_call",
+    name: "chamar_api",
     description:
       "Chama um endpoint da API do Sienge diretamente, para leituras que as tools " +
       "de negócio não cobrem — anexos, apropriações, previsões de entrega e afins.\n\n" +
       "Só leitura (GET). Antes de usar, verifique se existe tool específica para o " +
       "que precisa: elas resolvem o join no servidor e custam muito menos chamadas. " +
       "Esta é o caminho para o caso não previsto, não o atalho para o caso comum.\n\n" +
-      "Use sienge_api_endpoints para descobrir o path. Se errar, a resposta sugere " +
+      "Use listar_endpoints_api para descobrir o path. Se errar, a resposta sugere " +
       "os endpoints daquele recurso.\n\n" +
       "Exige deep_mode: true.",
     inputSchema: {
@@ -189,7 +189,7 @@ export function registrarDeep(server) {
         return {
           ...base,
           recursos_conhecidos: Object.keys(INVENTARIO).sort(),
-          sugestao: "Use sienge_api_endpoints para ver os endpoints de um recurso.",
+          sugestao: "Use listar_endpoints_api para ver os endpoints de um recurso.",
         };
       }
 
