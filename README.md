@@ -8,14 +8,15 @@ JavaScript puro (ESM), sem etapa de build. `node src/index.js` e pronto.
 
 ## Estado
 
-**Módulo `nucleo` implementado** — 9 das 130 tools do catálogo, com toda a
-infraestrutura compartilhada pronta.
+**Núcleo e a primeira tool de compras implementados** — 11 das 131 tools do
+catálogo, com toda a infraestrutura compartilhada pronta.
 
 | Módulo | Tools | Estado |
 |---|---|---|
-| `nucleo` | 9 | ✅ implementado |
+| `nucleo` | 10 | ✅ implementado |
+| `compras` | 1 de 10 | 🔨 em andamento |
 | `cadastros` | 24 | esqueleto gerado |
-| `compras` + `compras_api` | 44 | pendente |
+| `compras_api` | 33 | coberto por `sienge_api_call` |
 | `titulos`, `financeiro`, `contratos`, `cotacoes` | 54 | pendente |
 
 ## O que já funciona
@@ -31,7 +32,7 @@ infraestrutura compartilhada pronta.
   nunca é truncado
 - **Gate de confirmação** para operações de alto impacto: a primeira chamada
   devolve uma prévia, e só executa com `confirm: true`
-- **Catálogo por módulo** — carregar as 130 tools de uma vez custa ~22.500
+- **Catálogo por módulo** — carregar as 131 tools de uma vez custa ~22.500
   tokens de contexto em toda requisição; `SIENGE_PROFILE` e
   `enable_sienge_modules` recortam isso
 - **Licenciamento Ed25519 offline**, com `node:crypto`, sem dependência externa
@@ -129,7 +130,7 @@ src/
 ├── index.js            bootstrap stdio + perfil estático
 ├── config.js           credenciais e resolução de auth
 ├── registry.js         registro de tools: licença, auditoria, tags, envelope MCP
-├── modules.js          catálogo dos 8 módulos e as 130 tools
+├── modules.js          catálogo dos 8 módulos e as 131 tools
 ├── confirmation.js     gate de confirmação para operações de alto impacto
 ├── licensing.js        validação Ed25519 offline
 ├── http/
@@ -149,7 +150,9 @@ src/
 │   └── discovery.js    busca e paginação
 ├── knowledge/          processo de compras (conhecimento, não API)
 └── tools/
-    ├── nucleo.js       as 9 tools sempre visíveis
+    ├── nucleo.js       as 10 tools sempre visíveis
+    ├── deep.js         sienge_api_call — acesso cru, gated por deep_mode
+    ├── compras.js      camada de intenção de compras
     └── cadastros.js    esqueleto, ainda não registrado
 ```
 

@@ -20,6 +20,8 @@ import { getAuthInfo } from "./config.js";
 import * as tagRegistry from "./modules.js";
 import { applyProfile } from "./registry.js";
 import { definirModulosAtivos, registrarNucleo } from "./tools/nucleo.js";
+import { registrarCompras } from "./tools/compras.js";
+import { registrarDeep } from "./tools/deep.js";
 import { getLogger } from "./utils/logger.js";
 
 const logger = getLogger();
@@ -34,6 +36,8 @@ export function buildServer() {
   });
 
   registrarNucleo(server, { perfilConfigurado: perfilModulos });
+  registrarDeep(server);
+  registrarCompras(server);
   definirModulosAtivos(perfilModulos);
 
   // Precisa rodar depois do último registro: monta um allowlist (desabilita

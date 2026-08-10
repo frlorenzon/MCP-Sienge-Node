@@ -303,6 +303,41 @@ export async function buscarPedidos(makeRequest, opts = {}) {
   return normalizarLista(resposta, "purchaseOrders", "Erro ao consultar pedidos de compra");
 }
 
+/** GET /purchase-orders/{id}/items — itens de um pedido. */
+export async function buscarItensDoPedido(makeRequest, purchaseOrderId, opts = {}) {
+  const { limit = null, offset = null } = opts;
+  const params = {
+    limit: Math.min(Number(limit || LIMIT_PADRAO_PEDIDOS), LIMIT_MAXIMO),
+    offset: Math.max(Number(offset || 0), 0),
+  };
+  const resposta = await makeRequest(
+    "GET",
+    `/purchase-orders/${encodeURIComponent(purchaseOrderId)}/items`,
+    { params }
+  );
+  return normalizarLista(resposta, "items", `Erro ao consultar itens do pedido ${purchaseOrderId}`);
+}
+
+// %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+// CADASTROS CONSULTADOS POR ID
+// %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+/** GET /creditors/{id} — dados completos de um credor. */
+export async function buscarCredor(makeRequest, creditorId) {
+  const resposta = await makeRequest("GET", `/creditors/${encodeURIComponent(creditorId)}`);
+  if (!resposta.success) return failure(resposta, `❌ Erro ao buscar o credor ${creditorId}`);
+  return { success: true, creditor: resposta.data };
+}
+
+/** GET /cost-centers/{id} — dados de um centro de custo. */
+export async function buscarCentroDeCusto(makeRequest, costCenterId) {
+  const resposta = await makeRequest("GET", `/cost-centers/${encodeURIComponent(costCenterId)}`);
+  if (!resposta.success) {
+    return failure(resposta, `❌ Erro ao buscar o centro de custo ${costCenterId}`);
+  }
+  return { success: true, costCenter: resposta.data };
+}
+
 // %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 // TÍTULOS A PAGAR
 // %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

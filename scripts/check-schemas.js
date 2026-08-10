@@ -5,7 +5,7 @@
  *
  * Verificador de schemas contra o catálogo de referência.
  *
- * `contract/catalogo-tools.json` é a especificação das 130 tools deste
+ * `contract/catalogo-tools.json` é a especificação das 131 tools deste
  * servidor: nome, descrição e schema de cada parâmetro. Este script sobe o
  * servidor em memória, pede `tools/list` e confere que o que está implementado
  * corresponde ao que o catálogo declara.
@@ -201,15 +201,34 @@ if (process.argv.includes("--sync")) {
     return { ...t, description: viva.description };
   });
 
-  if (alteradas === 0) {
-    console.log(`\n📝 Nada a sincronizar: as descrições já batem.\n`);
+  // Tool implementada que não está no catálogo é lacuna da especificação, não
+  // do código — entra com o schema que o código produz, que aqui é a única
+  // fonte que existe. Diferente de uma tool já especificada, cujo schema nunca
+  // é sobrescrito.
+  const { tagsFor } = await import(path.join(raiz, "src/modules.js"));
+  const conhecidas = new Set(catalogo.map((t) => t.name));
+  const novas = tools.filter((t) => !conhecidas.has(t.name));
+  for (const t of novas) {
+    atualizado.push({
+      name: t.name,
+      description: t.description,
+      inputSchema: t.inputSchema,
+      tags: [...tagsFor(t.name)].sort(),
+    });
+  }
+
+  if (alteradas === 0 && novas.length === 0) {
+    console.log(`\n📝 Nada a sincronizar: o catálogo já bate com o servidor.\n`);
   } else {
     fs.writeFileSync(
       path.join(raiz, "contract/catalogo-tools.json"),
       `${JSON.stringify(atualizado, null, 2)}\n`,
       "utf8"
     );
-    console.log(`\n📝 Catálogo sincronizado: ${alteradas} descrição(ões) atualizada(s).\n`);
+    const partes = [];
+    if (alteradas) partes.push(`${alteradas} descrição(ões) atualizada(s)`);
+    if (novas.length) partes.push(`${novas.length} tool(s) nova(s): ${novas.map((t) => t.name).join(", ")}`);
+    console.log(`\n📝 Catálogo sincronizado: ${partes.join("; ")}.\n`);
   }
   await client.close();
   process.exit(0);

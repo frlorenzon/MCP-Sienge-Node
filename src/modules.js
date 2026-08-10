@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
  *
  * Agrupamento das tools em módulos, para que o cliente não precise carregar as
- * 130 de uma vez.
+ * 131 de uma vez.
  *
  * O catálogo completo custa ~22.500 tokens de contexto em toda requisição,
  * pagos mesmo quando a conversa toca um só assunto. Cada tool recebe a tag do
@@ -66,6 +66,7 @@ export const MODULES = {
 const TOOLS_BY_MODULE = {
   nucleo: [
     "test_sienge_connection",
+    "sienge_api_call",
     "describe_purchase_process",
     "search_sienge_data",
     "get_sienge_data_paginated",
