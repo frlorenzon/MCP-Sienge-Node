@@ -136,6 +136,85 @@ catálogo, com toda a infraestrutura compartilhada pronta.
 | `sienge_api_call` | chama um endpoint direto (só leitura, exige `deep_mode`) |
 | `compras_pedidos_para_aprovar` | a fila de aprovação resolvida numa chamada |
 
+## Modo profundo
+
+A API do Sienge tem centenas de endpoints. Criar uma tool para cada um
+custaria dezenas de milhares de tokens de contexto **em toda mensagem** — e a
+maioria nunca seria usada. As tools de negócio cobrem o dia a dia; o modo
+profundo cobre o resto, com duas ferramentas em vez de um catálogo.
+
+### Como funciona
+
+**1. Descobrir o endpoint.** `sienge_api_endpoints` responde em dois níveis,
+para que o modelo pague só pelo que consultar:
+
+```
+sienge_api_endpoints()
+→ recursos: bills, cost-centers, creditors, customers, customer-types,
+            enterprises, payment-categories, purchase-orders, units
+
+sienge_api_endpoints({ recurso: "purchase-orders" })
+→ GET /purchase-orders
+  GET /purchase-orders/{id}/items
+  GET /purchase-orders/{id}/attachments
+  … +12
+```
+
+Recursos com armadilha trazem uma `nota`. Consultar `customers`, por exemplo,
+avisa antes de você errar:
+
+> Não há busca por nome: a API filtra apenas por cpf, cnpj e datas. Para achar
+> um cliente pelo nome, pagine ou use o documento.
+
+**2. Chamar.** `sienge_api_call` executa:
+
+```json
+{
+  "path": "/purchase-orders/12345/attachments",
+  "params": { "limit": 50 },
+  "deep_mode": true
+}
+```
+
+Se o path estiver errado, o 404 já vem com os endpoints conhecidos daquele
+recurso — o modelo erra uma vez e acerta na seguinte, sem precisar consultar
+antes.
+
+### Os parâmetros
+
+| Parâmetro | | O que faz |
+|---|---|---|
+| `path` | obrigatório | endpoint relativo, começando com barra: `/creditors/45` |
+| `deep_mode` | **obrigatório, sempre `true`** | ver abaixo |
+| `params` | opcional | query string, incluindo `limit`/`offset` |
+| `bulk` | opcional | usa a API bulk-data em vez da v1 |
+
+### Por que `deep_mode` é obrigatório
+
+Não é burocracia. Sem ele, esta tool seria o caminho de menor resistência: o
+modelo a usaria para tudo, e as tools de negócio — que existem justamente
+porque resolvem o join no servidor e custam **dezenas de vezes menos chamadas**
+— deixariam de ser chamadas.
+
+Exigir `deep_mode: true` força uma declaração explícita de que se está saindo
+da camada de intenção de propósito. A validação acontece no schema, antes do
+handler: uma chamada sem o parâmetro é recusada pelo protocolo.
+
+Na prática, isso significa que o assistente precisa "decidir" descer ao nível
+cru, em vez de escorregar para lá.
+
+### Duas restrições
+
+**Só leitura.** Aceita apenas GET — não há parâmetro de método nem de corpo.
+Escrever no ERP por uma tool genérica contornaria o gate de confirmação e a
+validação das tools específicas: um POST montado a partir de um path adivinhado
+poderia criar título, nota ou pagamento sem ninguém ter conferido nada.
+Operações de escrita são sempre tools próprias, com prévia e confirmação.
+
+**Path validado.** Formato fechado, e segmentos `..` são recusados — a URL é
+montada por concatenação e seria normalizada pelo `fetch`, então `/../..`
+escaparia do prefixo da API e alcançaria outra rota do mesmo host.
+
 ## O que já funciona
 
 - **Autenticação** Bearer Token ou Basic Auth, resolvida por chamada
