@@ -12,11 +12,11 @@
  *
  * * estática — `SIENGE_PROFILE` no ambiente fixa os módulos visíveis na subida
  *   do servidor. Funciona em qualquer cliente MCP, porque o recorte já chega
- *   pronto no primeiro `tools/list`.
- * * dinâmica — `enable_sienge_modules` liga um módulo no meio da sessão e o
- *   SDK emite `notifications/tools/list_changed`. Depende de o cliente reagir
- *   à notificação; clientes que a ignoram ficam presos ao recorte estático, e
- *   por isso ela nunca remove o que o perfil já liberou.
+ *   pronto no primeiro `tools/list`. Sem configuração, só o núcleo sobe.
+ * * dinâmica — `carregar_<modulo>` liga um módulo no meio da sessão e o SDK
+ *   emite `notifications/tools/list_changed`. Depende de o cliente reagir à
+ *   notificação; clientes que a ignoram ficam presos ao recorte estático, e
+ *   por isso o carregamento nunca remove o que o perfil já liberou.
  *
  * `nucleo` está sempre visível: são as tools de descoberta e diagnóstico, e é
  * por elas que o modelo aprende que os demais módulos existem.
@@ -71,12 +71,11 @@ const TOOLS_BY_MODULE = {
     "test_sienge_connection",
     "sienge_api_call",
     "sienge_api_endpoints",
+    "carregar_compras",
+    "descarregar_modulos",
     "describe_purchase_process",
     "get_sienge_api_quota",
     "get_auth_info",
-    "list_sienge_modules",
-    "enable_sienge_modules",
-    "disable_sienge_modules",
   ],
   compras: [
     "compras_pedidos_para_aprovar",
@@ -253,7 +252,10 @@ export function normalize(requested) {
  */
 export function parseProfile(raw) {
   const texto = (raw || "").trim();
-  if (!texto) return { modulos: null, avisos: [] };
+  // Sem configuração, só o núcleo. O padrão antigo — tudo visível — cobrava o
+  // catálogo inteiro de quem nunca pediu por ele, e tornava as tools de
+  // carregamento decorativas: não há o que carregar se já está tudo carregado.
+  if (!texto) return { modulos: new Set([CORE_MODULE]), avisos: [] };
 
   const itens = texto.replace(/;/g, ",").split(",");
   if (itens.some((p) => ALL_ALIASES.has(p.trim().toLowerCase()))) {

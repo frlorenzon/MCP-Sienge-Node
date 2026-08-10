@@ -8,12 +8,12 @@ JavaScript puro (ESM), sem etapa de build. `node src/index.js` e pronto.
 
 ## Estado
 
-**Núcleo e a primeira tool de compras implementados** — 10 das 106 tools do
+**Núcleo e a primeira tool de compras implementados** — 9 das 105 tools do
 catálogo, com toda a infraestrutura compartilhada pronta.
 
 | Módulo | Tools | Estado |
 |---|---|---|
-| `nucleo` | 9 | ✅ implementado |
+| `nucleo` | 8 | ✅ implementado |
 | `compras` | 1 de 10 | 🔨 em andamento |
 | `compras_api` | 33 | coberto por `sienge_api_call` |
 | `titulos`, `financeiro`, `contratos`, `cotacoes` | 54 | pendente |
@@ -31,9 +31,9 @@ catálogo, com toda a infraestrutura compartilhada pronta.
   nunca é truncado
 - **Gate de confirmação** para operações de alto impacto: a primeira chamada
   devolve uma prévia, e só executa com `confirm: true`
-- **Catálogo por módulo** — carregar as 106 tools de uma vez custa ~19.000
-  tokens de contexto em toda requisição; `SIENGE_PROFILE` e
-  `enable_sienge_modules` recortam isso
+- **Catálogo por módulo** — o servidor sobe com o núcleo apenas (~1.300
+  tokens); `carregar_compras` traz o resto sob demanda, e `SIENGE_PROFILE`
+  fixa um recorte maior quando a operação sempre usa os mesmos módulos
 - **Licenciamento Ed25519 offline**, com `node:crypto`, sem dependência externa
 
 ## Uso
@@ -80,7 +80,7 @@ Neste caso o registro no cliente MCP fica como em `.mcp.json`.
 |---|---|
 | `SIENGE_API_KEY` **ou** `SIENGE_USERNAME`+`SIENGE_PASSWORD` | autenticação |
 | `SIENGE_SUBDOMAIN` | subdomínio da empresa, compõe a URL de toda chamada |
-| `SIENGE_PROFILE` | recorte do catálogo: vazio/`all`, `minimo`, ou `compras,financeiro` |
+| `SIENGE_PROFILE` | recorte inicial: **vazio = só o núcleo** (padrão), `all`, ou `compras,financeiro` |
 | `SIENGE_MCP_API_PACKAGE` | pacote contratado, para calcular o saldo diário |
 
 Lista completa em `.env.example`.
@@ -147,7 +147,7 @@ src/
 ├── index.js            bootstrap stdio + perfil estático
 ├── config.js           credenciais e resolução de auth
 ├── registry.js         registro de tools: licença, auditoria, tags, envelope MCP
-├── modules.js          catálogo dos 7 módulos e as 106 tools
+├── modules.js          catálogo dos 7 módulos e as 105 tools
 ├── confirmation.js     gate de confirmação para operações de alto impacto
 ├── licensing.js        validação Ed25519 offline
 ├── http/
@@ -173,7 +173,8 @@ src/
 │   └── purchaseApproval.js  travessia da fila de aprovação
 ├── knowledge/          processo de compras (conhecimento, não API)
 └── tools/
-    ├── nucleo.js       as 9 tools sempre visíveis
+    ├── nucleo.js       diagnóstico e conhecimento
+    ├── modulos.js      carregar_compras, descarregar_modulos
     ├── deep.js         sienge_api_endpoints + sienge_api_call
     └── compras.js      camada de intenção de compras
 ```

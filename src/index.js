@@ -19,7 +19,8 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { getAuthInfo } from "./config.js";
 import * as tagRegistry from "./modules.js";
 import { applyProfile } from "./registry.js";
-import { definirModulosAtivos, registrarNucleo } from "./tools/nucleo.js";
+import { registrarNucleo } from "./tools/nucleo.js";
+import { definirModulosCarregados, registrarModulos } from "./tools/modulos.js";
 import { registrarCompras } from "./tools/compras.js";
 import { registrarDeep } from "./tools/deep.js";
 import { getLogger } from "./utils/logger.js";
@@ -35,10 +36,11 @@ export function buildServer() {
     version: "0.1.0",
   });
 
-  registrarNucleo(server, { perfilConfigurado: perfilModulos });
+  registrarNucleo(server);
+  registrarModulos(server);
   registrarDeep(server);
   registrarCompras(server);
-  definirModulosAtivos(perfilModulos);
+  definirModulosCarregados(perfilModulos);
 
   // Precisa rodar depois do último registro: monta um allowlist (desabilita
   // tudo, depois habilita as tags pedidas) sobre o que já está registrado.

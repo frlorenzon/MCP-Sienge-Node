@@ -24,62 +24,6 @@
     ]
   },
   {
-    "name": "list_sienge_modules",
-    "description": "Lista os módulos de tools deste servidor e quais estão carregados agora.\n\nConsulte esta tool quando a operação que você precisa fazer no Sienge não\ntiver uma tool correspondente na lista disponível: o servidor carrega o\ncatálogo por módulo para economizar contexto, então a tool provavelmente\nexiste mas está fora do recorte atual. `enable_sienge_modules` carrega o\nmódulo que faltar.",
-    "inputSchema": {
-      "additionalProperties": false,
-      "properties": {},
-      "type": "object"
-    },
-    "tags": [
-      "nucleo"
-    ]
-  },
-  {
-    "name": "enable_sienge_modules",
-    "description": "Carrega as tools de um ou mais módulos do Sienge nesta sessão.\n\nMódulos: cadastros (clientes, credores, empreendimentos, centros de custo,\nunidades), compras (solicitações, pedidos e notas fiscais de compra),\ncotacoes (cotações e negociação), financeiro (contas a pagar/receber e\ndashboard), contratos (contratos de fornecimento), titulos (API bill-debt\nde títulos a pagar).\n\nAs tools carregadas passam a aparecer na lista de ferramentas disponíveis.\nCarregue os módulos de que precisa de uma vez só — cada módulo carregado\nocupa contexto pelo resto da conversa.",
-    "inputSchema": {
-      "additionalProperties": false,
-      "properties": {
-        "modules": {
-          "items": {
-            "type": "string"
-          },
-          "type": "array"
-        }
-      },
-      "required": [
-        "modules"
-      ],
-      "type": "object"
-    },
-    "tags": [
-      "nucleo"
-    ]
-  },
-  {
-    "name": "disable_sienge_modules",
-    "description": "Descarrega as tools de um ou mais módulos do Sienge nesta sessão, liberando\no contexto que elas ocupavam.\n\nO módulo 'nucleo' não pode ser descarregado — é por ele que os demais\nvoltam a ser carregados.",
-    "inputSchema": {
-      "additionalProperties": false,
-      "properties": {
-        "modules": {
-          "items": {
-            "type": "string"
-          },
-          "type": "array"
-        }
-      },
-      "required": [
-        "modules"
-      ],
-      "type": "object"
-    },
-    "tags": [
-      "nucleo"
-    ]
-  },
-  {
     "name": "compras_pedidos_para_aprovar",
     "description": "Fila de pedidos de compra pendentes de aprovação, pronta para análise.\n\nNuma chamada só: pedido, data, fornecedor, obra, valor, e por item o\ninsumo, a quantidade, a unidade e o preço unitário. As divergências vêm\nmarcadas em `alertas`.\n\nUse sempre que a pergunta for \"quais pedidos preciso aprovar\" ou\nequivalente. Não monte esse percurso à mão com chamadas cruas: o\nresultado é o mesmo e custa dezenas de vezes mais.\n\n`fornecedor`, `obra` e `insumo` vêm como id na linha; os nomes estão nos\ndicionários `fornecedores`, `obras` e `insumos` no fim da resposta, cada um\nescrito uma vez só. Faça o join a partir deles — não há chamada a fazer\npara descobrir esses nomes.\n\nNão cobre anexos, apropriações nem previsões de entrega — para esses, use\nsienge_api_call com deep_mode.\n\nNão aprova nada: aprovar é ato separado, de outra pessoa. Ver\ndescribe_purchase_process().\n\nJanela fixa de 180 dias. A data volta em `data`, então recorte menor se faz\nsobre o resultado.",
     "inputSchema": {
@@ -5058,6 +5002,42 @@
           "description": "nome do recurso, sem barra — ex: \"purchase-orders\", \"bills\""
         }
       },
+      "additionalProperties": false,
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    },
+    "tags": [
+      "nucleo"
+    ]
+  },
+  {
+    "name": "carregar_compras",
+    "description": "Carrega as ferramentas de compras: fila de pedidos pendentes de aprovação, já com itens, insumos, fornecedores e obras resolvidos. Chame quando a conversa for sobre pedidos de compra, aprovação ou fornecedores.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    },
+    "tags": [
+      "nucleo"
+    ]
+  },
+  {
+    "name": "descarregar_modulos",
+    "description": "Descarrega módulos já carregados, liberando o contexto que as tools deles ocupam nas próximas mensagens. Útil numa conversa longa que mudou de assunto. O núcleo nunca é descarregado.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "modulos": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "nomes dos módulos, como aparecem em `modulos_carregados`"
+        }
+      },
+      "required": [
+        "modulos"
+      ],
       "additionalProperties": false,
       "$schema": "http://json-schema.org/draft-07/schema#"
     },

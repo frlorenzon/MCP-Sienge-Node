@@ -14,47 +14,14 @@ import { registerTool } from "../registry.js";
 import { fastConnectionProbe } from "../http/client.js";
 import { getAuthInfo } from "../config.js";
 import * as apiQuota from "../utils/apiQuota.js";
-import * as tagRegistry from "../modules.js";
 import * as connection from "../workflows/connection.js";
 import { describePurchaseProcess } from "../knowledge/purchaseProcess.js";
-import { contarPorTag, enableByTags, disableByTags, registered } from "../registry.js";
-
-// %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-// MÓDULOS ATIVOS
-// %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-// Sob stdio, um processo atende uma sessão — o estado de módulos ativos pode
-// morar no processo. Ver a nota de divergência em modules.js antes de expor
-// este servidor por HTTP.
-
-let modulosAtivos = null;
-
-/** Define o recorte inicial, aplicado por index.js a partir de SIENGE_PROFILE. */
-export function definirModulosAtivos(modulos) {
-  modulosAtivos = modulos === null ? new Set(Object.keys(tagRegistry.MODULES)) : new Set(modulos);
-}
-
-/**
- * Só entram no resumo os módulos que têm tools registradas. Listar um módulo
- * vazio faria o modelo carregá-lo, receber sucesso e não ganhar ferramenta
- * nenhuma — pior que não anunciá-lo.
- */
-function resumoModulos(ativos) {
-  const disponiveis = contarPorTag();
-  return Object.entries(tagRegistry.MODULES)
-    .filter(([nome]) => disponiveis[nome] > 0)
-    .map(([nome, descricao]) => ({
-      modulo: nome,
-      descricao,
-      tools: disponiveis[nome],
-      carregado: ativos.has(nome),
-    }));
-}
 
 // %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 // REGISTRO
 // %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-export function registrarNucleo(server, { perfilConfigurado }) {
+export function registrarNucleo(server) {
   // ---------- Diagnóstico ----------
 
   registerTool(server, {
@@ -126,141 +93,4 @@ export function registrarNucleo(server, { perfilConfigurado }) {
 
   // ---------- Módulos de tools ----------
 
-  registerTool(server, {
-    name: "list_sienge_modules",
-    description:
-      "Lista os módulos de tools deste servidor e quais estão carregados agora.\n\n" +
-      "Consulte esta tool quando a operação que você precisa fazer no Sienge não\n" +
-      "tiver uma tool correspondente na lista disponível: o servidor carrega o\n" +
-      "catálogo por módulo para economizar contexto, então a tool provavelmente\n" +
-      "existe mas está fora do recorte atual. `enable_sienge_modules` carrega o\n" +
-      "módulo que faltar.",
-    handler: async () => {
-      const disponiveis = contarPorTag();
-      const previstos = Object.keys(tagRegistry.MODULES).filter((m) => !disponiveis[m]);
-      const resumo = resumoModulos(modulosAtivos);
-      const carregados = [...modulosAtivos].filter((m) => disponiveis[m] > 0).sort();
-
-      return {
-        success: true,
-        modulos: resumo,
-        carregados,
-        perfil_configurado:
-          perfilConfigurado === null ? "todos" : [...perfilConfigurado].sort(),
-        observacao:
-          "Use enable_sienge_modules para carregar um módulo. O módulo " +
-          `'${tagRegistry.CORE_MODULE}' está sempre carregado.`,
-        // Sem isto, um módulo previsto mas ainda não implementado seria
-        // indistinguível de um que simplesmente não existe — e o modelo
-        // insistiria em carregá-lo.
-        ...(previstos.length
-          ? {
-              modulos_previstos: previstos.sort(),
-              aviso_de_versao:
-                `Esta versão do servidor implementa ${resumo.length} de ` +
-                `${Object.keys(tagRegistry.MODULES).length} módulos. Os listados em ` +
-                "`modulos_previstos` ainda não têm tools e não podem ser carregados.",
-            }
-          : {}),
-      };
-    },
-  });
-
-  registerTool(server, {
-    name: "enable_sienge_modules",
-    description:
-      "Carrega as tools de um ou mais módulos do Sienge nesta sessão.\n\n" +
-      "Módulos: cadastros (clientes, credores, empreendimentos, centros de custo,\n" +
-      "unidades), compras (solicitações, pedidos e notas fiscais de compra),\n" +
-      "cotacoes (cotações e negociação), financeiro (contas a pagar/receber e\n" +
-      "dashboard), contratos (contratos de fornecimento), titulos (API bill-debt\n" +
-      "de títulos a pagar).\n\n" +
-      "As tools carregadas passam a aparecer na lista de ferramentas disponíveis.\n" +
-      "Carregue os módulos de que precisa de uma vez só — cada módulo carregado\n" +
-      "ocupa contexto pelo resto da conversa.",
-    inputSchema: { modules: z.array(z.string()) },
-    handler: async ({ modules }) => {
-      const { validos, desconhecidos } = tagRegistry.normalize(modules);
-      if (desconhecidos.length) {
-        return {
-          success: false,
-          error: `Módulo desconhecido: ${desconhecidos.join(", ")}`,
-          modulos_validos: Object.keys(tagRegistry.MODULES).sort(),
-        };
-      }
-      if (validos.size === 0) {
-        return { success: false, error: "Informe ao menos um módulo em `modules`." };
-      }
-
-      // Um módulo previsto no catálogo mas sem tools registradas seria
-      // "carregado" com sucesso e não traria ferramenta alguma. Recusar é o
-      // que impede o modelo de insistir numa capacidade que esta versão do
-      // servidor não tem.
-      const disponiveis = contarPorTag();
-      const semTools = [...validos].filter((m) => !disponiveis[m]);
-      if (semTools.length) {
-        return {
-          success: false,
-          error:
-            `Módulo não disponível nesta versão do servidor: ${semTools.sort().join(", ")}. ` +
-            "Está previsto no catálogo, mas ainda não tem tools implementadas.",
-          modulos_disponiveis: Object.keys(disponiveis).sort(),
-        };
-      }
-
-      modulosAtivos = new Set([...modulosAtivos, ...validos]);
-      enableByTags(validos);
-
-      return {
-        success: true,
-        carregados_agora: [...validos].sort(),
-        tools_adicionadas: [...validos].reduce((soma, m) => soma + (disponiveis[m] ?? 0), 0),
-        modulos_carregados: [...modulosAtivos].filter((m) => disponiveis[m] > 0).sort(),
-      };
-    },
-  });
-
-  registerTool(server, {
-    name: "disable_sienge_modules",
-    description:
-      "Descarrega as tools de um ou mais módulos do Sienge nesta sessão, liberando\n" +
-      "o contexto que elas ocupavam.\n\n" +
-      "O módulo 'nucleo' não pode ser descarregado — é por ele que os demais\n" +
-      "voltam a ser carregados.",
-    inputSchema: { modules: z.array(z.string()) },
-    handler: async ({ modules }) => {
-      const { validos, desconhecidos } = tagRegistry.normalize(modules);
-      if (desconhecidos.length) {
-        return {
-          success: false,
-          error: `Módulo desconhecido: ${desconhecidos.join(", ")}`,
-          modulos_validos: Object.keys(tagRegistry.MODULES).sort(),
-        };
-      }
-
-      const alvo = new Set([...validos].filter((m) => m !== tagRegistry.CORE_MODULE));
-      if (alvo.size === 0) {
-        return {
-          success: false,
-          error: `Nada a descarregar — '${tagRegistry.CORE_MODULE}' é permanente.`,
-        };
-      }
-
-      modulosAtivos = new Set([...modulosAtivos].filter((m) => !alvo.has(m)));
-      disableByTags(alvo);
-      // Tools com mais de uma tag (ex.: create_purchase_invoice_simple, em
-      // financeiro e compras) seriam derrubadas junto pelo passo acima.
-      // Reafirmar os módulos que continuam ativos as traz de volta, porque a
-      // última regra de visibilidade é a que vale.
-      if (modulosAtivos.size) enableByTags(modulosAtivos);
-
-      return {
-        success: true,
-        descarregados: [...alvo].sort(),
-        modulos_carregados: [...modulosAtivos].sort(),
-      };
-    },
-  });
-
-  return registered;
 }

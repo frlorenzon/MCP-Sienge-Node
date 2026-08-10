@@ -48,10 +48,10 @@ test("licença assinada por outra chave é rejeitada", () => {
 // MÓDULOS
 // %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-test("catálogo cobre as 106 tools sem repetição", () => {
-  assert.equal(modules.TOOL_TAGS.size, 106);
+test("catálogo cobre as 105 tools sem repetição", () => {
+  assert.equal(modules.TOOL_TAGS.size, 105);
   const total = Object.values(modules.toolCounts()).reduce((a, b) => a + b, 0);
-  assert.equal(total, 106);
+  assert.equal(total, 105);
 });
 
 test("SIENGE_PROFILE sempre inclui o núcleo", () => {
@@ -61,8 +61,13 @@ test("SIENGE_PROFILE sempre inclui o núcleo", () => {
   assert.deepEqual([...modulos].sort(), ["compras", "financeiro", "nucleo"]);
 });
 
-test("perfil vazio ou 'all' não recorta nada", () => {
-  assert.equal(modules.parseProfile("").modulos, null);
+test("sem perfil configurado, só o núcleo sobe", () => {
+  // O padrão antigo — tudo visível — cobrava o catálogo inteiro de quem nunca
+  // pediu por ele, e tornava as tools de carregamento decorativas.
+  assert.deepEqual([...modules.parseProfile("").modulos], ["nucleo"]);
+});
+
+test("'all' pede explicitamente tudo, e aí nada é recortado", () => {
   assert.equal(modules.parseProfile("all").modulos, null);
   assert.equal(modules.parseProfile("tudo").modulos, null);
 });
@@ -111,48 +116,6 @@ async function servidorEmMemoria() {
   return { client, call };
 }
 
-test("list_sienge_modules só anuncia módulos que têm tools", async () => {
-  const { client, call } = await servidorEmMemoria();
-  try {
-    const r = await call("list_sienge_modules");
-    for (const m of r.modulos) {
-      assert.ok(m.tools > 0, `módulo '${m.modulo}' anunciado com ${m.tools} tools`);
-    }
-    // O que está no catálogo mas não implementado precisa aparecer como
-    // previsto, e não some da resposta — some da lista de carregáveis.
-    assert.ok(r.modulos_previstos.includes("titulos"));
-    assert.match(r.aviso_de_versao, /não têm tools/);
-  } finally {
-    await client.close();
-  }
-});
-
-test("enable_sienge_modules recusa módulo sem tools em vez de mentir", async () => {
-  const { client, call } = await servidorEmMemoria();
-  try {
-    const antes = (await client.listTools()).tools.length;
-    const r = await call("enable_sienge_modules", { modules: ["titulos"] });
-    const depois = (await client.listTools()).tools.length;
-
-    assert.equal(r.success, false, "carregar módulo vazio não pode reportar sucesso");
-    assert.match(r.error, /não disponível nesta versão/);
-    assert.equal(depois, antes, "nenhuma tool devia ter aparecido");
-  } finally {
-    await client.close();
-  }
-});
-
-test("enable_sienge_modules ainda recusa módulo inexistente", async () => {
-  const { client, call } = await servidorEmMemoria();
-  try {
-    const r = await call("enable_sienge_modules", { modules: ["inventado"] });
-    assert.equal(r.success, false);
-    assert.match(r.error, /Módulo desconhecido/);
-  } finally {
-    await client.close();
-  }
-});
-
 // %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 // DESCOBERTA
 // %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -178,3 +141,70 @@ test("buscarTitulos devolve os títulos sob a chave 'bills'", async () => {
   assert.deepEqual(r.bills, [{ billId: 1, documentNumber: "NF-001" }]);
 });
 
+
+test("carregar_compras traz as tools do módulo e diz quantas", async () => {
+  const { client, call } = await servidorEmMemoria();
+  try {
+    const antes = (await client.listTools()).tools.length;
+    const r = await call("carregar_compras");
+    const depois = (await client.listTools()).tools.length;
+
+    assert.equal(r.success, true);
+    assert.equal(r.tools_disponiveis, depois - antes, "o número relatado precisa bater");
+    assert.ok(r.modulos_carregados.includes("compras"));
+  } finally {
+    await client.close();
+  }
+});
+
+test("carregar duas vezes é idempotente e avisa", async () => {
+  const { client, call } = await servidorEmMemoria();
+  try {
+    await call("carregar_compras");
+    const n = (await client.listTools()).tools.length;
+    const r = await call("carregar_compras");
+    assert.equal(r.success, true);
+    assert.equal(r.ja_estava_carregado, true);
+    assert.equal((await client.listTools()).tools.length, n);
+  } finally {
+    await client.close();
+  }
+});
+
+test("descarregar_modulos devolve o contexto das próximas mensagens", async () => {
+  const { client, call } = await servidorEmMemoria();
+  try {
+    await call("carregar_compras");
+    const carregado = (await client.listTools()).tools.length;
+    const r = await call("descarregar_modulos", { modulos: ["compras"] });
+    const descarregado = (await client.listTools()).tools.length;
+
+    assert.equal(r.success, true);
+    assert.ok(descarregado < carregado, "as tools precisam sumir de tools/list");
+    assert.ok(!r.modulos_carregados.includes("compras"));
+  } finally {
+    await client.close();
+  }
+});
+
+test("o núcleo não pode ser descarregado", async () => {
+  const { client, call } = await servidorEmMemoria();
+  try {
+    const r = await call("descarregar_modulos", { modulos: ["nucleo"] });
+    assert.equal(r.success, false);
+    assert.match(r.error, /permanente/);
+  } finally {
+    await client.close();
+  }
+});
+
+test("descarregar_modulos recusa nome desconhecido", async () => {
+  const { client, call } = await servidorEmMemoria();
+  try {
+    const r = await call("descarregar_modulos", { modulos: ["inventado"] });
+    assert.equal(r.success, false);
+    assert.match(r.error, /Módulo desconhecido/);
+  } finally {
+    await client.close();
+  }
+});

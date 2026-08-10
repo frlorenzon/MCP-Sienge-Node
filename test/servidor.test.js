@@ -27,6 +27,7 @@ function conversarComServidor(comando, args, { cwd = raiz, timeoutMs = 10_000 } 
   return new Promise((resolve, reject) => {
     const proc = spawn(comando, args, {
       cwd,
+      // SIENGE_PROFILE vazio: só o núcleo, que é o padrão do servidor.
       env: { ...process.env, SIENGE_MCP_HOME: "/tmp/sienge-mcp-test", SIENGE_PROFILE: "" },
       stdio: ["pipe", "pipe", "pipe"],
     });
@@ -91,7 +92,7 @@ test("sobe por caminho absoluto e completa o handshake", async () => {
 
   const lista = mensagens.find((m) => m.id === 2);
   assert.ok(lista, "não respondeu ao tools/list");
-  assert.equal(lista.result.tools.length, 10);
+  assert.equal(lista.result.tools.length, 8);
 });
 
 test("sobe por caminho relativo", async () => {
@@ -111,7 +112,7 @@ test("sobe através de symlink, como o binário instalado pelo npm", async () =>
     const { mensagens } = await conversarComServidor("node", [link]);
     const lista = mensagens.find((m) => m.id === 2);
     assert.ok(lista, "servidor invocado por symlink não respondeu");
-    assert.equal(lista.result.tools.length, 10);
+    assert.equal(lista.result.tools.length, 8);
   } finally {
     rmSync(tmp, { recursive: true, force: true });
   }
