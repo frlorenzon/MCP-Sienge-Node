@@ -95,7 +95,16 @@ export function registrarDeep(server) {
           recursos: Object.keys(INVENTARIO).sort(),
         };
       }
-      return { success: true, recurso: chave, endpoints: encontrado.endpoints };
+      // A `nota` só existe nos recursos com armadilha — tipicamente o que a
+      // API não filtra. Chega aqui, no momento em que o modelo está montando
+      // a chamada, e não depois de um resultado vazio que ele interpretaria
+      // como "não existe".
+      return {
+        success: true,
+        recurso: chave,
+        endpoints: encontrado.endpoints,
+        nota: encontrado.nota ?? null,
+      };
     },
   });
 

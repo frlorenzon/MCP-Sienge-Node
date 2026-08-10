@@ -1,5 +1,5 @@
 /**
- * Licenciamento, recorte por módulos e as tools de descoberta.
+ * Licenciamento, recorte por módulos e diagnóstico.
  */
 
 import test from "node:test";
@@ -10,7 +10,6 @@ process.env.SIENGE_MCP_HOME = "/tmp/sienge-mcp-test";
 
 const licensing = await import("../src/licensing.js");
 const modules = await import("../src/modules.js");
-const discovery = await import("../src/workflows/discovery.js");
 const bills = await import("../src/apis/bills.js");
 
 // %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -49,10 +48,10 @@ test("licença assinada por outra chave é rejeitada", () => {
 // MÓDULOS
 // %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-test("catálogo cobre as 108 tools sem repetição", () => {
-  assert.equal(modules.TOOL_TAGS.size, 108);
+test("catálogo cobre as 106 tools sem repetição", () => {
+  assert.equal(modules.TOOL_TAGS.size, 106);
   const total = Object.values(modules.toolCounts()).reduce((a, b) => a + b, 0);
-  assert.equal(total, 108);
+  assert.equal(total, 106);
 });
 
 test("SIENGE_PROFILE sempre inclui o núcleo", () => {
@@ -179,108 +178,3 @@ test("buscarTitulos devolve os títulos sob a chave 'bills'", async () => {
   assert.deepEqual(r.bills, [{ billId: 1, documentNumber: "NF-001" }]);
 });
 
-test("busca de títulos encontra os registros do período", async () => {
-  const funcs = {
-    customers: async () => ({ success: true, customers: [], count: 0 }),
-    creditors: async () => ({ success: true, creditors: [], count: 0 }),
-    projects: async () => ({ success: true, enterprises: [], count: 0 }),
-    purchase_orders: async () => ({ success: true, purchaseOrders: [], count: 0 }),
-    bills: async () => ({ success: true, bills: [{ billId: 9 }], count: 1 }),
-  };
-  const r = await discovery.searchSiengeData(funcs, "qualquer", "bills", 10, null);
-  assert.equal(r.success, true);
-  assert.equal(r.count, 1, "títulos do período precisam aparecer");
-  assert.equal(r.alcance, discovery.SEM_FILTRO);
-  assert.match(r.ressalva, /não tem busca textual/);
-});
-
-test("busca declara o alcance de cada entidade", async () => {
-  const funcs = {
-    customers: async () => ({ success: true, customers: [{ id: 1, name: "ACME" }], count: 1 }),
-    creditors: async () => ({ success: true, creditors: [], count: 0 }),
-    projects: async () => ({ success: true, enterprises: [], count: 0 }),
-    purchase_orders: async () => ({ success: true, purchaseOrders: [], count: 0 }),
-    bills: async () => ({ success: true, bills: [], count: 0 }),
-  };
-  const r = await discovery.searchSiengeData(funcs, "ACME");
-  assert.equal(r.chamadas_api, 4, "títulos ficam fora da varredura genérica");
-  assert.equal(r.busca_parcial, true);
-  assert.match(r.observacao, /filtrada no cliente/);
-  const clientes = r.results_by_entity.find((e) => e.entity_type === "customers");
-  assert.equal(clientes.alcance, discovery.AMOSTRA);
-  assert.match(clientes.ressalva, /Registros fora dessa amostra não aparecem/);
-});
-
-test("'não encontrei' não é tratado como falha", async () => {
-  const vazio = {
-    customers: async () => ({ success: true, customers: [], count: 0 }),
-    creditors: async () => ({ success: true, creditors: [], count: 0 }),
-    projects: async () => ({ success: true, enterprises: [], count: 0 }),
-    purchase_orders: async () => ({ success: true, purchaseOrders: [], count: 0 }),
-    bills: async () => ({ success: true, bills: [], count: 0 }),
-  };
-  const r = await discovery.searchSiengeData(vazio, "inexistente");
-  assert.equal(r.success, true, "busca sem resultado é resposta, não erro");
-  assert.equal(r.total_records, 0);
-  assert.equal(r.sem_resultado.length, 4);
-});
-
-test("paginação deduz has_next sem inventar total", async () => {
-  const funcs = {
-    customers: async ({ limit }) => ({
-      success: true,
-      customers: Array.from({ length: limit }, (_, i) => ({ id: i })),
-      count: limit,
-    }),
-  };
-  const r = await discovery.getSiengeDataPaginated(funcs, "customers", 2, 20);
-  assert.equal(r.success, true);
-  assert.equal(r.pagination.current_page, 2);
-  assert.equal(r.pagination.has_previous, true);
-  assert.equal(r.pagination.has_next, true, "página cheia sugere que há mais");
-  assert.equal(r.pagination.total_desconhecido, true);
-});
-
-test("page_size é limitado a 50", async () => {
-  let recebido = null;
-  const funcs = {
-    customers: async (args) => {
-      recebido = args.limit;
-      return { success: true, customers: [], count: 0 };
-    },
-  };
-  await discovery.getSiengeDataPaginated(funcs, "customers", 1, 5000);
-  assert.equal(recebido, 50);
-});
-
-test("entidade sem paginador é recusada com a lista do que existe", async () => {
-  const r = await discovery.getSiengeDataPaginated({}, "inventada", 1, 10);
-  assert.equal(r.success, false);
-  assert.deepEqual(r.supported_types, ["bills", "creditors", "customers", "projects"]);
-});
-
-test("paginação avisa quando o filtro textual não é conclusivo", async () => {
-  // A informação que list_sienge_entities daria agora viaja aqui, junto do
-  // resultado — no momento em que ela muda o que se pode concluir.
-  const funcs = {
-    customers: async () => ({ success: true, customers: [{ id: 1 }], count: 1 }),
-  };
-  const comBusca = await discovery.getSiengeDataPaginated(funcs, "customers", 1, 20, {
-    search: "ACME",
-  });
-  assert.equal(comBusca.alcance, discovery.AMOSTRA);
-  assert.match(comBusca.ressalva, /apenas.*sobre esta página/);
-
-  // Sem busca textual não há o que ressalvar — e a chave some da resposta.
-  const semBusca = await discovery.getSiengeDataPaginated(funcs, "customers", 1, 20);
-  assert.equal(semBusca.ressalva, null);
-});
-
-test("entidade filtrada no servidor não carrega ressalva", async () => {
-  const funcs = { creditors: async () => ({ success: true, creditors: [], count: 0 }) };
-  const r = await discovery.getSiengeDataPaginated(funcs, "creditors", 1, 20, {
-    search: "ACME",
-  });
-  assert.equal(r.alcance, discovery.SERVIDOR, "credores a API filtra de verdade");
-  assert.equal(r.ressalva, null, "aqui 'não encontrei' é conclusivo");
-});

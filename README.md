@@ -8,12 +8,12 @@ JavaScript puro (ESM), sem etapa de build. `node src/index.js` e pronto.
 
 ## Estado
 
-**Núcleo e a primeira tool de compras implementados** — 12 das 108 tools do
+**Núcleo e a primeira tool de compras implementados** — 10 das 106 tools do
 catálogo, com toda a infraestrutura compartilhada pronta.
 
 | Módulo | Tools | Estado |
 |---|---|---|
-| `nucleo` | 11 | ✅ implementado |
+| `nucleo` | 9 | ✅ implementado |
 | `compras` | 1 de 10 | 🔨 em andamento |
 | `compras_api` | 33 | coberto por `sienge_api_call` |
 | `titulos`, `financeiro`, `contratos`, `cotacoes` | 54 | pendente |
@@ -31,7 +31,7 @@ catálogo, com toda a infraestrutura compartilhada pronta.
   nunca é truncado
 - **Gate de confirmação** para operações de alto impacto: a primeira chamada
   devolve uma prévia, e só executa com `confirm: true`
-- **Catálogo por módulo** — carregar as 108 tools de uma vez custa ~19.000
+- **Catálogo por módulo** — carregar as 106 tools de uma vez custa ~19.000
   tokens de contexto em toda requisição; `SIENGE_PROFILE` e
   `enable_sienge_modules` recortam isso
 - **Licenciamento Ed25519 offline**, com `node:crypto`, sem dependência externa
@@ -147,7 +147,7 @@ src/
 ├── index.js            bootstrap stdio + perfil estático
 ├── config.js           credenciais e resolução de auth
 ├── registry.js         registro de tools: licença, auditoria, tags, envelope MCP
-├── modules.js          catálogo dos 7 módulos e as 108 tools
+├── modules.js          catálogo dos 7 módulos e as 106 tools
 ├── confirmation.js     gate de confirmação para operações de alto impacto
 ├── licensing.js        validação Ed25519 offline
 ├── http/
@@ -169,10 +169,11 @@ src/
 │   ├── enterprises.js
 │   └── bills.js
 ├── workflows/
-│   └── discovery.js    busca e paginação
+│   ├── connection.js   diagnóstico de conectividade
+│   └── purchaseApproval.js  travessia da fila de aprovação
 ├── knowledge/          processo de compras (conhecimento, não API)
 └── tools/
-    ├── nucleo.js       as 11 tools sempre visíveis
+    ├── nucleo.js       as 9 tools sempre visíveis
     ├── deep.js         sienge_api_endpoints + sienge_api_call
     └── compras.js      camada de intenção de compras
 ```

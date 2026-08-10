@@ -2,7 +2,7 @@
  * SPDX-FileCopyrightText: © 2026 Felipe Ribeiro Lorenzon
  * SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
  *
- * As 10 tools do módulo `nucleo` — descoberta, busca genérica e diagnóstico.
+ * As tools do módulo `nucleo` — descoberta, busca genérica e diagnóstico.
  *
  * Este módulo está sempre visível: é por ele que o modelo descobre que os
  * demais existem. As descrições aqui não são documentação — são o texto que o
@@ -11,71 +11,13 @@
 
 import { z } from "zod";
 import { registerTool } from "../registry.js";
-import { fastConnectionProbe, makeSiengeRequest } from "../http/client.js";
-import { cacheGet, cacheSet } from "../http/cache.js";
-import { fetchAllPaginated } from "../http/paginate.js";
+import { fastConnectionProbe } from "../http/client.js";
 import { getAuthInfo } from "../config.js";
 import * as apiQuota from "../utils/apiQuota.js";
 import * as tagRegistry from "../modules.js";
-import * as discovery from "../workflows/discovery.js";
-import * as customers from "../apis/customers.js";
-import * as creditors from "../apis/creditors.js";
-import * as enterprises from "../apis/enterprises.js";
-import * as purchaseOrders from "../apis/purchase-orders.js";
-import * as bills from "../apis/bills.js";
+import * as connection from "../workflows/connection.js";
 import { describePurchaseProcess } from "../knowledge/purchaseProcess.js";
 import { contarPorTag, enableByTags, disableByTags, registered } from "../registry.js";
-
-// %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-// ADAPTADORES DE ENTIDADE
-// %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-// Normalizam a assinatura de cada consulta de entidade para o formato que os
-// dispatchers de discovery.js esperam.
-
-const deps = { cacheGet, cacheSet, fetchAllPaginated };
-
-const adaptadores = {
-  // A API de clientes não tem busca por nome; discovery classifica esta
-  // entidade como filtrada na amostra e cuida do filtro.
-  customers: (args = {}) =>
-    customers.buscarClientes(makeSiengeRequest, deps, {
-      limit: args.limit ?? 50,
-      offset: args.offset ?? 0,
-    }),
-
-  // `creditor` é o parâmetro de busca real desta API — o servidor filtra.
-  creditors: (args = {}) =>
-    creditors.buscarCredores(makeSiengeRequest, deps, {
-      limit: args.limit ?? 50,
-      offset: args.offset ?? 0,
-      creditor: args.search,
-    }),
-
-  projects: (args = {}) =>
-    enterprises.buscarEmpreendimentos(makeSiengeRequest, {
-      limit: args.limit ?? 100,
-      offset: args.offset ?? 0,
-      company_id: args.company_id,
-    }),
-
-  // O período é resolvido por discovery, relativo a hoje.
-  bills: (args = {}) =>
-    bills.buscarTitulos(makeSiengeRequest, {
-      start_date: args.start_date,
-      end_date: args.end_date,
-      creditor_id: args.creditor_id,
-      limit: args.limit ?? 100,
-      offset: args.offset ?? 0,
-    }),
-
-  purchase_orders: (args = {}) =>
-    purchaseOrders.buscarPedidos(makeSiengeRequest, {
-      supplier_id: args.supplier_id,
-      building_id: args.building_id,
-      limit: args.limit ?? 100,
-      offset: args.offset ?? 0,
-    }),
-};
 
 // %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 // MÓDULOS ATIVOS
@@ -126,7 +68,7 @@ export function registrarNucleo(server, { perfilConfigurado }) {
     // diagnóstico a ser podado.
     manterMetadados: true,
     handler: () =>
-      discovery.testSiengeConnection(fastConnectionProbe, {
+      connection.testSiengeConnection(fastConnectionProbe, {
         SIENGE_API_KEY: process.env.SIENGE_API_KEY,
         SIENGE_USERNAME: process.env.SIENGE_USERNAME,
         SIENGE_PASSWORD: process.env.SIENGE_PASSWORD,
@@ -181,40 +123,6 @@ export function registrarNucleo(server, { perfilConfigurado }) {
   // search_sienge_data e get_sienge_data_paginated, anexada a cada resposta.
   // Chega no momento em que importa, sem depender de o modelo lembrar de
   // consultar um catálogo antes, e sem custar contexto em toda requisição.
-
-  registerTool(server, {
-    name: "search_sienge_data",
-    description:
-      "Busca `query` em várias entidades do Sienge de uma vez (clientes, credores, " +
-      "projetos, títulos, pedidos de compra).",
-    inputSchema: {
-      query: z.string(),
-      entity_types: z.array(z.string()).nullish(),
-      limit_per_entity: z.number().int().default(10),
-    },
-    handler: async ({ query, entity_types, limit_per_entity = 10 }) => {
-      // Uma única entidade vira busca dirigida; duas ou mais caem na varredura
-      // padrão, que ignora o recorte pedido.
-      const entityType =
-        entity_types && entity_types.length === 1 ? entity_types[0] : null;
-      return discovery.searchSiengeData(adaptadores, query, entityType, limit_per_entity, null);
-    },
-  });
-
-  registerTool(server, {
-    name: "get_sienge_data_paginated",
-    description:
-      "Traz uma página de resultados de uma entidade do Sienge, já com metadados de paginação prontos.",
-    inputSchema: {
-      entity_type: z.string().describe("customers, creditors, projects ou bills"),
-      page: z.number().int().default(1).describe("página desejada, começando em 1"),
-      page_size: z.number().int().default(20).describe("tamanho da página, com teto de 50"),
-      filters: z.record(z.string(), z.any()).nullish().describe("filtros específicos da entidade escolhida"),
-      sort_by: z.string().nullish().describe("campo de ordenação, quando a entidade suportar"),
-    },
-    handler: ({ entity_type, page = 1, page_size = 20, filters, sort_by }) =>
-      discovery.getSiengeDataPaginated(adaptadores, entity_type, page, page_size, filters, sort_by),
-  });
 
   // ---------- Módulos de tools ----------
 

@@ -9,6 +9,9 @@ import { semNulos } from "./_helpers.js";
 
 export const RECURSO = "/bills";
 
+export const NOTA =
+  "Sem busca textual: títulos só se recortam por período, credor ou documento.";
+
 export const ENDPOINTS = [
   "GET /bills",
   "GET /bills/by-change-date",

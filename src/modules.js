@@ -72,8 +72,6 @@ const TOOLS_BY_MODULE = {
     "sienge_api_call",
     "sienge_api_endpoints",
     "describe_purchase_process",
-    "search_sienge_data",
-    "get_sienge_data_paginated",
     "get_sienge_api_quota",
     "get_auth_info",
     "list_sienge_modules",

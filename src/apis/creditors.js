@@ -9,6 +9,10 @@ import { cached, cacheKey, failure, listEndpoint, semNulos } from "./_helpers.js
 
 export const RECURSO = "/creditors";
 
+export const NOTA =
+  "`creditor` busca por nome, nome fantasia ou código, e é filtrada no servidor — " +
+  "ausência de resultado aqui é conclusiva.";
+
 export const ENDPOINTS = [
   "GET /creditors",
   "GET /creditors/{id}",

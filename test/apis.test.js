@@ -89,3 +89,36 @@ test("contract/endpoints.json está atualizado", async () => {
     "rode: node scripts/build-endpoints.js"
   );
 });
+
+test("sienge_api_endpoints entrega a nota do recurso, quando há", async () => {
+  // A nota é o que sobrou do conceito de "alcance": em vez de uma tool de
+  // busca que filtra mal e se desculpa na resposta, o aviso chega antes,
+  // quando o modelo ainda está escolhendo como consultar.
+  const { buildServer } = await import("../src/index.js");
+  const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");
+  const { InMemoryTransport } = await import("@modelcontextprotocol/sdk/inMemory.js");
+  const { server } = buildServer();
+  const [ct, st] = InMemoryTransport.createLinkedPair();
+  const client = new Client({ name: "test", version: "1.0.0" });
+  await Promise.all([client.connect(ct), server.connect(st)]);
+
+  try {
+    const call = async (recurso) =>
+      JSON.parse(
+        (await client.callTool({ name: "sienge_api_endpoints", arguments: { recurso } }))
+          .content[0].text
+      );
+
+    const clientes = await call("customers");
+    assert.match(clientes.nota, /Não há busca por nome/);
+
+    const credores = await call("creditors");
+    assert.match(credores.nota, /conclusiva/, "credores é o único com busca real");
+
+    // Recurso sem armadilha não carrega nota — a poda de nulos remove a chave.
+    const obras = await call("enterprises");
+    assert.equal(obras.nota, undefined);
+  } finally {
+    await client.close();
+  }
+});

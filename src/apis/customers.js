@@ -9,6 +9,10 @@ import { cached, cacheKey, failure, listEndpoint, semNulos } from "./_helpers.js
 
 export const RECURSO = "/customers";
 
+export const NOTA =
+  "Não há busca por nome: a API filtra apenas por cpf, cnpj e datas. Para achar " +
+  "um cliente pelo nome, pagine ou use o documento.";
+
 export const ENDPOINTS = [
   "GET /customers",
   "GET /customers/{id}",

@@ -22,7 +22,8 @@
       "PATCH /bills/{id}/units",
       "POST /bills",
       "POST /bills/{id}/attachments"
-    ]
+    ],
+    "nota": "Sem busca textual: títulos só se recortam por período, credor ou documento."
   },
   "cost-centers": {
     "arquivo": "src/apis/cost-centers.js",
@@ -40,7 +41,8 @@
       "GET /creditors/{id}",
       "GET /creditors/{id}/bank-informations",
       "GET /creditors/{id}/pix-keys"
-    ]
+    ],
+    "nota": "`creditor` busca por nome, nome fantasia ou código, e é filtrada no servidor — ausência de resultado aqui é conclusiva."
   },
   "customer-types": {
     "arquivo": "src/apis/customer-types.js",
@@ -55,7 +57,8 @@
       "GET /customers/{id}",
       "GET /customers/{id}/attachments",
       "GET /customers/{id}/attachments/{attachmentId}"
-    ]
+    ],
+    "nota": "Não há busca por nome: a API filtra apenas por cpf, cnpj e datas. Para achar um cliente pelo nome, pagine ou use o documento."
   },
   "enterprises": {
     "arquivo": "src/apis/enterprises.js",

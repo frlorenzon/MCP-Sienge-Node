@@ -39,6 +39,9 @@ export async function coletarEndpoints() {
     inventario[mod.RECURSO.replace(/^\//, "")] = {
       arquivo: `src/apis/${arquivo}`,
       endpoints: [...mod.ENDPOINTS].sort(),
+      // Só os recursos com armadilha declaram NOTA — o modelo lê no momento
+      // em que está montando a chamada, antes de errar.
+      ...(mod.NOTA ? { nota: mod.NOTA } : {}),
     };
   }
   return inventario;
