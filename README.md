@@ -8,14 +8,13 @@ JavaScript puro (ESM), sem etapa de build. `node src/index.js` e pronto.
 
 ## Estado
 
-**Núcleo e a primeira tool de compras implementados** — 11 das 131 tools do
+**Núcleo e a primeira tool de compras implementados** — 12 das 108 tools do
 catálogo, com toda a infraestrutura compartilhada pronta.
 
 | Módulo | Tools | Estado |
 |---|---|---|
-| `nucleo` | 10 | ✅ implementado |
+| `nucleo` | 11 | ✅ implementado |
 | `compras` | 1 de 10 | 🔨 em andamento |
-| `cadastros` | 24 | esqueleto gerado |
 | `compras_api` | 33 | coberto por `sienge_api_call` |
 | `titulos`, `financeiro`, `contratos`, `cotacoes` | 54 | pendente |
 
@@ -32,7 +31,7 @@ catálogo, com toda a infraestrutura compartilhada pronta.
   nunca é truncado
 - **Gate de confirmação** para operações de alto impacto: a primeira chamada
   devolve uma prévia, e só executa com `confirm: true`
-- **Catálogo por módulo** — carregar as 131 tools de uma vez custa ~22.500
+- **Catálogo por módulo** — carregar as 108 tools de uma vez custa ~19.000
   tokens de contexto em toda requisição; `SIENGE_PROFILE` e
   `enable_sienge_modules` recortam isso
 - **Licenciamento Ed25519 offline**, com `node:crypto`, sem dependência externa
@@ -114,12 +113,16 @@ O catálogo já especifica schema e descrição de todas as tools, então o
 esqueleto sai pronto:
 
 ```bash
-node scripts/generate-schemas.js cadastros --out src/tools/cadastros.js
+node scripts/generate-schemas.js titulos --out src/tools/titulos.js
 ```
 
-Gera as 24 tools de `cadastros` com os schemas Zod completos, defaults e
-descrições — restam os handlers, marcados com `TODO`. Depois de escrevê-los,
-`npm run check` confirma que a interface não divergiu da especificação.
+Gera as tools do módulo com os schemas Zod completos, defaults e descrições —
+restam os handlers, marcados com `TODO`. Depois de escrevê-los, `npm run check`
+confirma que a interface não divergiu da especificação.
+
+Não há módulo de cadastros: clientes, credores e obras são o *join* que uma
+tool de negócio resolve por dentro, não a pergunta. Eles vivem em `src/apis/`,
+que não custa contexto.
 
 `node scripts/generate-schemas.js --list` mostra os módulos disponíveis.
 
@@ -144,7 +147,7 @@ src/
 ├── index.js            bootstrap stdio + perfil estático
 ├── config.js           credenciais e resolução de auth
 ├── registry.js         registro de tools: licença, auditoria, tags, envelope MCP
-├── modules.js          catálogo dos 8 módulos e as 131 tools
+├── modules.js          catálogo dos 7 módulos e as 108 tools
 ├── confirmation.js     gate de confirmação para operações de alto impacto
 ├── licensing.js        validação Ed25519 offline
 ├── http/
@@ -169,10 +172,9 @@ src/
 │   └── discovery.js    busca e paginação
 ├── knowledge/          processo de compras (conhecimento, não API)
 └── tools/
-    ├── nucleo.js       as 10 tools sempre visíveis
+    ├── nucleo.js       as 11 tools sempre visíveis
     ├── deep.js         sienge_api_endpoints + sienge_api_call
-    ├── compras.js      camada de intenção de compras
-    └── cadastros.js    esqueleto, ainda não registrado
+    └── compras.js      camada de intenção de compras
 ```
 
 ## Licença

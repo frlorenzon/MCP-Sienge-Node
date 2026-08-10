@@ -9,7 +9,6 @@
   },
   "files": [
     "src/",
-    "!src/tools/cadastros.js",
     "contract/endpoints.json",
     "README.md",
     "LICENSE",

@@ -49,10 +49,10 @@ test("licença assinada por outra chave é rejeitada", () => {
 // MÓDULOS
 // %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-test("catálogo cobre as 131 tools sem repetição", () => {
-  assert.equal(modules.TOOL_TAGS.size, 131);
+test("catálogo cobre as 108 tools sem repetição", () => {
+  assert.equal(modules.TOOL_TAGS.size, 108);
   const total = Object.values(modules.toolCounts()).reduce((a, b) => a + b, 0);
-  assert.equal(total, 131);
+  assert.equal(total, 108);
 });
 
 test("SIENGE_PROFILE sempre inclui o núcleo", () => {
@@ -121,7 +121,7 @@ test("list_sienge_modules só anuncia módulos que têm tools", async () => {
     }
     // O que está no catálogo mas não implementado precisa aparecer como
     // previsto, e não some da resposta — some da lista de carregáveis.
-    assert.ok(r.modulos_previstos.includes("cadastros"));
+    assert.ok(r.modulos_previstos.includes("titulos"));
     assert.match(r.aviso_de_versao, /não têm tools/);
   } finally {
     await client.close();
@@ -132,7 +132,7 @@ test("enable_sienge_modules recusa módulo sem tools em vez de mentir", async ()
   const { client, call } = await servidorEmMemoria();
   try {
     const antes = (await client.listTools()).tools.length;
-    const r = await call("enable_sienge_modules", { modules: ["cadastros"] });
+    const r = await call("enable_sienge_modules", { modules: ["titulos"] });
     const depois = (await client.listTools()).tools.length;
 
     assert.equal(r.success, false, "carregar módulo vazio não pode reportar sucesso");

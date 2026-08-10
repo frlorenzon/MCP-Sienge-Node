@@ -42,6 +42,12 @@
       "GET /creditors/{id}/pix-keys"
     ]
   },
+  "customer-types": {
+    "arquivo": "src/apis/customer-types.js",
+    "endpoints": [
+      "GET /customer-types"
+    ]
+  },
   "customers": {
     "arquivo": "src/apis/customers.js",
     "endpoints": [
@@ -57,6 +63,13 @@
       "GET /enterprises",
       "GET /enterprises/{id}",
       "GET /enterprises/{id}/groupings"
+    ]
+  },
+  "payment-categories": {
+    "arquivo": "src/apis/payment-categories.js",
+    "endpoints": [
+      "GET /payment-categories",
+      "GET /payment-categories/{id}"
     ]
   },
   "purchase-orders": {
@@ -77,6 +90,17 @@
       "GET /purchase-orders/{id}/totalization",
       "PATCH /purchase-orders/{id}/authorize",
       "PATCH /purchase-orders/{id}/disapprove"
+    ]
+  },
+  "units": {
+    "arquivo": "src/apis/units.js",
+    "endpoints": [
+      "GET /units",
+      "GET /units/characteristics",
+      "GET /units/situations",
+      "GET /units/{id}",
+      "GET /units/{id}/evaluations",
+      "GET /units/{id}/groupings"
     ]
   }
 }

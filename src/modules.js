@@ -3,9 +3,9 @@
  * SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
  *
  * Agrupamento das tools em módulos, para que o cliente não precise carregar as
- * 131 de uma vez.
+ * 108 de uma vez.
  *
- * O catálogo completo custa ~22.500 tokens de contexto em toda requisição,
+ * O catálogo completo custa ~19.000 tokens de contexto em toda requisição,
  * pagos mesmo quando a conversa toca um só assunto. Cada tool recebe a tag do
  * seu módulo (via `registrarTool` em registry.js) e a visibilidade é recortada
  * de duas formas, que se combinam:
@@ -21,6 +21,12 @@
  * `nucleo` está sempre visível: são as tools de descoberta e diagnóstico, e é
  * por elas que o modelo aprende que os demais módulos existem.
  *
+ * Não há módulo de cadastros. Clientes, credores, obras e centros de custo
+ * quase nunca são a pergunta — são o join que uma tool de negócio resolve por
+ * dentro. Expor 24 tools para consultá-los custaria ~2.500 tokens em toda
+ * requisição para entregar o que `compras_pedidos_para_aprovar` já entrega
+ * resolvido. Eles vivem em `src/apis/`, que não custa contexto.
+ *
  * ⚠️ O recorte dinâmico vale para o processo inteiro: `enable()`/`disable()`
  * do SDK não têm escopo de sessão. Sob transporte stdio isso não faz
  * diferença — um processo atende uma sessão. Passa a fazer se o servidor for
@@ -35,9 +41,6 @@ export const MODULES = {
   nucleo:
     "Descoberta, busca genérica e diagnóstico. Sempre carregado — é o ponto " +
     "de entrada para os demais módulos.",
-  cadastros:
-    "Clientes, credores/fornecedores, empreendimentos, centros de custo, " +
-    "planos financeiros e unidades.",
   compras:
     "Compras no nível da decisão: fila de pedidos para aprovação já com " +
     "itens, insumos e fornecedores resolvidos, histórico de preço por " +
@@ -67,6 +70,7 @@ const TOOLS_BY_MODULE = {
   nucleo: [
     "test_sienge_connection",
     "sienge_api_call",
+    "sienge_api_endpoints",
     "describe_purchase_process",
     "search_sienge_data",
     "get_sienge_data_paginated",
@@ -75,32 +79,6 @@ const TOOLS_BY_MODULE = {
     "list_sienge_modules",
     "enable_sienge_modules",
     "disable_sienge_modules",
-  ],
-  cadastros: [
-    "get_sienge_customers",
-    "get_sienge_creditors",
-    "get_sienge_projects",
-    "get_sienge_payment_categories",
-    "get_sienge_cost_centers",
-    "get_sienge_enterprise_groupings",
-    "get_sienge_customer",
-    "get_sienge_customer_attachments",
-    "download_sienge_customer_attachment",
-    "get_sienge_creditor",
-    "get_sienge_creditor_bank_information",
-    "get_sienge_creditor_pix_keys",
-    "get_sienge_enterprise",
-    "get_sienge_cost_center",
-    "get_sienge_cost_center_available",
-    "get_sienge_cost_center_register_settings",
-    "get_sienge_payment_category",
-    "get_sienge_units",
-    "get_sienge_unit",
-    "get_sienge_unit_groupings",
-    "get_sienge_unit_characteristics",
-    "get_sienge_unit_situations",
-    "get_sienge_unit_evaluations",
-    "get_sienge_customer_types",
   ],
   compras: [
     "compras_pedidos_para_aprovar",
