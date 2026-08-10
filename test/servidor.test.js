@@ -97,7 +97,11 @@ test("sobe por caminho absoluto e completa o handshake", async () => {
 
   const lista = mensagens.find((m) => m.id === 2);
   assert.ok(lista, "não respondeu ao tools/list");
-  assert.equal(lista.result.tools.length, 6);
+  const nomes = lista.result.tools.map((t) => t.name);
+  assert.equal(nomes.length, 5);
+  // Com o perfil padrão nada além do núcleo está carregado, e uma tool que não
+  // tem o que fazer não deve custar contexto em toda requisição.
+  assert.ok(!nomes.includes("descarregar_modulos"), nomes.join(", "));
 });
 
 test("sobe por caminho relativo", async () => {
@@ -117,7 +121,7 @@ test("sobe através de symlink, como o binário instalado pelo npm", async () =>
     const { mensagens } = await conversarComServidor("node", [link]);
     const lista = mensagens.find((m) => m.id === 2);
     assert.ok(lista, "servidor invocado por symlink não respondeu");
-    assert.equal(lista.result.tools.length, 6);
+    assert.equal(lista.result.tools.length, 5);
   } finally {
     rmSync(tmp, { recursive: true, force: true });
   }

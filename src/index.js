@@ -21,7 +21,11 @@ import { getAuthInfo } from "./config.js";
 import * as tagRegistry from "./modules.js";
 import { applyProfile } from "./registry.js";
 import { registrarNucleo } from "./tools/nucleo.js";
-import { definirModulosCarregados, registrarModulos } from "./tools/modulos.js";
+import {
+  definirModulosCarregados,
+  instalarDicaDeModulo,
+  registrarModulos,
+} from "./tools/modulos.js";
 import { registrarCompras } from "./tools/compras.js";
 import { registrarDeep } from "./tools/deep.js";
 import { getLogger } from "./utils/logger.js";
@@ -52,20 +56,31 @@ export function buildServer() {
   });
 
   registrarNucleo(server);
-  registrarModulos(server);
   const deepAtivo = registrarDeep(server);
   registrarCompras(server);
-  definirModulosCarregados(perfilModulos);
+
+  // Depois das linhas acima, e não antes: os carregadores são gerados a partir
+  // dos módulos que têm tools registradas de fato. Um módulo novo passa a ter
+  // `carregar_<modulo>` no instante em que ganha a primeira tool aqui em cima.
+  registrarModulos(server);
 
   // Precisa rodar depois do último registro: monta um allowlist (desabilita
   // tudo, depois habilita as tags pedidas) sobre o que já está registrado.
   if (perfilModulos !== null) applyProfile(perfilModulos);
 
-  return { server, perfilModulos, deepAtivo };
+  // E esta, depois do allowlist: além de guardar o recorte, ela decide se
+  // `descarregar_modulos` fica visível, e o allowlist habilita por tag — o
+  // núcleo inteiro, esta tool junto.
+  definirModulosCarregados(perfilModulos);
+
+  // Por último, sobre o handler de tools/call que os registros acima criaram.
+  const dicaInstalada = instalarDicaDeModulo(server);
+
+  return { server, perfilModulos, deepAtivo, dicaInstalada };
 }
 
 async function main() {
-  const { server, perfilModulos, deepAtivo } = buildServer();
+  const { server, perfilModulos, deepAtivo, dicaInstalada } = buildServer();
 
   const authInfo = getAuthInfo();
   const contagem = tagRegistry.toolCounts();
@@ -79,6 +94,14 @@ async function main() {
     modo_profundo: deepAtivo ? "habilitado" : "desligado (SIENGE_DEEP_MODE)",
     tools_no_catalogo: total,
   });
+
+  if (!dicaInstalada) {
+    logger.warn(
+      "Não foi possível instalar a dica de módulo: chamar uma tool de módulo " +
+        "não carregado devolverá o erro cru do SDK, sem o nome do carregador. " +
+        "Provável mudança de API interna no @modelcontextprotocol/sdk."
+    );
+  }
 
   if (!authInfo.configured) {
     logger.warn(

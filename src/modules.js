@@ -37,41 +37,102 @@
 
 export const CORE_MODULE = "nucleo";
 
+/**
+ * Os módulos, cada um com dois textos que têm leitores diferentes.
+ *
+ * `descricao` é para quem configura o servidor: explica o recorte que
+ * `SIENGE_PROFILE` produz, e não custa contexto nenhum — nunca chega ao modelo.
+ *
+ * `chamada` é a descrição da tool `carregar_<modulo>`, e é o único texto pelo
+ * qual o modelo decide carregar o módulo. Precisa dizer o que vem junto e em
+ * que conversa isso serve; é cobrada em toda requisição, então cada palavra
+ * paga. Reusar uma pela outra parece economia e não é: a `descricao` não tem a
+ * frase-gatilho, e sem ela o módulo fica lá sem ser carregado.
+ *
+ * `nucleo` não tem `chamada` porque não tem carregador — está sempre visível.
+ */
 export const MODULES = {
-  nucleo:
-    "Descoberta, busca genérica e diagnóstico. Sempre carregado — é o ponto " +
-    "de entrada para os demais módulos.",
-  compras:
-    "Compras no nível da decisão: fila de pedidos para aprovação já com " +
-    "itens, insumos e fornecedores resolvidos, histórico de preço por " +
-    "insumo, aprovação de pedidos e solicitações, lançamento de nota. " +
-    "Atende a maior parte das perguntas sobre compras sem `compras_api`.",
-  compras_api:
-    "Compras no nível do endpoint: as consultas 1:1 com a API do Sienge — " +
-    "itens avulsos, apropriações, previsões de entrega, anexos, avaliação " +
-    "de fornecedor. Carregue só quando `compras` não cobrir o que precisa.",
-  cotacoes:
-    "Cotações de preço e negociação com fornecedores — etapa 3 do processo " +
-    "de compras, incluindo o mapa comparativo.",
-  financeiro:
-    "Contas a pagar e a receber por período, busca financeira, resumo de " +
-    "dashboard e os workflows de fechamento de título.",
-  contratos:
-    "Contratos de fornecimento: itens, aditivos, anexos, medições por obra " +
-    "e autorização.",
-  titulos:
-    "API bill-debt completa de títulos a pagar: inclusão, parcelas, " +
-    "impostos, rateio por departamento/obra, pagamento e anexos.",
+  nucleo: {
+    descricao:
+      "Descoberta, busca genérica e diagnóstico. Sempre carregado — é o ponto " +
+      "de entrada para os demais módulos.",
+  },
+  compras: {
+    descricao:
+      "Compras no nível da decisão: fila de pedidos para aprovação já com " +
+      "itens, insumos e fornecedores resolvidos, histórico de preço por " +
+      "insumo, aprovação de pedidos e solicitações, lançamento de nota. " +
+      "Atende a maior parte das perguntas sobre compras sem `compras_api`.",
+    chamada:
+      "Carrega as ferramentas de compras: fila de pedidos pendentes de aprovação, " +
+      "já com itens, insumos, fornecedores e obras resolvidos. Chame quando a " +
+      "conversa for sobre pedidos de compra, aprovação ou fornecedores.",
+  },
+  compras_api: {
+    descricao:
+      "Compras no nível do endpoint: as consultas 1:1 com a API do Sienge — " +
+      "itens avulsos, apropriações, previsões de entrega, anexos, avaliação " +
+      "de fornecedor. Carregue só quando `compras` não cobrir o que precisa.",
+    chamada:
+      "Carrega as consultas 1:1 com a API de compras: itens avulsos, apropriações " +
+      "por obra, previsões de entrega, anexos e avaliação de fornecedor. Chame " +
+      "quando as ferramentas de compras não cobrirem o detalhe que a pergunta pede.",
+  },
+  cotacoes: {
+    descricao:
+      "Cotações de preço e negociação com fornecedores — etapa 3 do processo " +
+      "de compras, incluindo o mapa comparativo.",
+    chamada:
+      "Carrega as ferramentas de cotação de preço: criação, itens, fornecedores " +
+      "por item, rodadas de negociação e o mapa comparativo. Chame quando a " +
+      "conversa for sobre cotar preço, comparar fornecedores ou negociar.",
+  },
+  financeiro: {
+    descricao:
+      "Contas a pagar e a receber por período, busca financeira, resumo de " +
+      "dashboard e os workflows de fechamento de título.",
+    chamada:
+      "Carrega as ferramentas financeiras: contas a pagar e a receber por " +
+      "período, busca financeira, resumo de dashboard e fechamento de título. " +
+      "Chame quando a conversa for sobre pagamentos, recebimentos, vencimentos " +
+      "ou saldo.",
+  },
+  contratos: {
+    descricao:
+      "Contratos de fornecimento: itens, aditivos, anexos, medições por obra " +
+      "e autorização.",
+    chamada:
+      "Carrega as ferramentas de contrato de fornecimento: itens, aditivos, " +
+      "medições por obra, anexos e autorização. Chame quando a conversa for " +
+      "sobre contrato com fornecedor, aditivo ou medição.",
+  },
+  titulos: {
+    descricao:
+      "API bill-debt completa de títulos a pagar: inclusão, parcelas, " +
+      "impostos, rateio por departamento/obra, pagamento e anexos.",
+    chamada:
+      "Carrega a API completa de títulos a pagar: inclusão e alteração de " +
+      "título, parcelas, impostos, rateio por departamento e por obra, " +
+      "informação de pagamento e anexos. Chame quando for preciso montar ou " +
+      "alterar um título — para só consultar valores a pagar, financeiro basta.",
+  },
 };
+
+/** Nome da tool que carrega um módulo. A convenção mora aqui, e só aqui. */
+export function nomeDoCarregador(modulo) {
+  return `carregar_${modulo}`;
+}
 
 // Cada tool aparece exatamente uma vez aqui — a checagem de completude no fim
 // deste módulo lança na importação se alguma tool nova ficar sem módulo.
 const TOOLS_BY_MODULE = {
+  // Os `carregar_<modulo>` não entram aqui à mão: são acrescentados logo
+  // abaixo, um por módulo. Escrevê-los seria manter a mesma lista em dois
+  // lugares, e é sempre a segunda cópia que alguém esquece de atualizar.
   nucleo: [
     "testar_conexao",
     "chamar_api",
     "listar_endpoints_api",
-    "carregar_compras",
     "descarregar_modulos",
     "explicar_processo_compras",
     "consultar_cota",
@@ -195,6 +256,14 @@ const CROSS_TAGS = {
   create_purchase_invoice_simple: ["compras"],
 };
 
+// Todo carregador é do núcleo — precisa estar visível justamente quando o
+// módulo dele não está. `tagsFor` cairia em `nucleo` de qualquer forma, pelo
+// caminho dos nomes desconhecidos, mas aí o acerto seria por acidente: o
+// carregador não apareceria em `toolsIn('nucleo')` nem na contagem do catálogo.
+for (const modulo of Object.keys(MODULES)) {
+  if (modulo !== CORE_MODULE) TOOLS_BY_MODULE[CORE_MODULE].push(nomeDoCarregador(modulo));
+}
+
 export const TOOL_TAGS = new Map();
 for (const [module, names] of Object.entries(TOOLS_BY_MODULE)) {
   for (const name of names) {
@@ -296,13 +365,28 @@ export function parseProfile(raw) {
 }
 
 /**
- * Um módulo sem descrição, ou uma tool em dois módulos, é erro de programação:
- * lança na importação em vez de esconder tools silenciosamente em produção.
+ * Um módulo sem descrição, um módulo sem chamada, ou uma tool em dois módulos
+ * é erro de programação: lança na importação em vez de esconder tools
+ * silenciosamente em produção.
  */
 function assertCatalogoConsistente() {
   const semDescricao = Object.keys(TOOLS_BY_MODULE).filter((m) => !(m in MODULES));
   if (semDescricao.length) {
     throw new Error(`Módulos sem descrição em MODULES: ${semDescricao.sort().join(", ")}`);
+  }
+
+  // Sem `chamada` não há o que escrever na descrição do carregador, e o módulo
+  // subiria com as tools registradas, desabilitadas e inalcançáveis — sem erro,
+  // sem log, sem teste vermelho. É o modo de falha que mais custa caro aqui,
+  // porque só aparece como "o modelo nunca usa essas tools".
+  const semChamada = Object.entries(MODULES)
+    .filter(([m, def]) => m !== CORE_MODULE && !def?.chamada)
+    .map(([m]) => m);
+  if (semChamada.length) {
+    throw new Error(
+      `Módulos sem 'chamada' em MODULES: ${semChamada.sort().join(", ")}. ` +
+        "É a descrição da tool carregar_<modulo> — sem ela o módulo fica inalcançável."
+    );
   }
 
   const vistas = new Set();

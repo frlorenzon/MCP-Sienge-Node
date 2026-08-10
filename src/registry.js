@@ -103,8 +103,13 @@ function enxugar(valor, sucesso, profundidade = 0) {
  * `manterMetadados` existe para as tools cujo propósito É o diagnóstico, como
  * testar_conexao: nelas a latência e o id da requisição são o
  * resultado, não ruído.
+ *
+ * Exportada para o interceptador de tool indisponível em `tools/modulos.js`,
+ * que responde fora do caminho normal de uma tool e mesmo assim precisa do
+ * mesmo envelope — reimplementá-lo lá abriria a segunda cópia que o cabeçalho
+ * deste arquivo existe para evitar.
  */
-function toContent(result, { manterMetadados = false } = {}) {
+export function toContent(result, { manterMetadados = false } = {}) {
   const sucesso = result?.success === true && !manterMetadados;
   const enxuto = enxugar(result, sucesso);
   return {
@@ -214,28 +219,54 @@ export function modulosDisponiveis() {
   return new Set(Object.keys(contarPorTag()));
 }
 
+/**
+ * Leva uma tool ao estado pedido, sem notificar quando ela já estava nele.
+ *
+ * `enable()` e `disable()` do SDK chamam `update()`, que emite
+ * `notifications/tools/list_changed` incondicionalmente — inclusive quando
+ * nada mudou. Sem esta comparação, reafirmar um módulo de seis tools que já
+ * estavam ativas manda seis notificações dizendo que o catálogo mudou, e um
+ * cliente que reage a elas refaz seis `tools/list` para receber a mesma lista.
+ *
+ * O caminho que mais sofria com isso é o descarregamento: ele desabilita por
+ * tag e depois reafirma tudo o que continua carregado, para não derrubar as
+ * tools de tag cruzada — e essa reafirmação é, por construção, quase toda
+ * feita de tools que já estavam no estado certo.
+ */
+export function definirHabilitada(handle, ativa) {
+  if ((handle.enabled !== false) === ativa) return false;
+  if (ativa) handle.enable();
+  else handle.disable();
+  return true;
+}
+
 /** Habilita as tools cujas tags estejam em `tagsAtivas`. */
 export function enableByTags(tagsAtivas) {
   for (const { handle, tags } of registered.values()) {
-    if ([...tags].some((t) => tagsAtivas.has(t))) handle.enable();
+    if ([...tags].some((t) => tagsAtivas.has(t))) definirHabilitada(handle, true);
   }
 }
 
 /** Desabilita as tools cujas tags estejam em `tagsAlvo`. */
 export function disableByTags(tagsAlvo) {
   for (const { handle, tags } of registered.values()) {
-    if ([...tags].some((t) => tagsAlvo.has(t))) handle.disable();
+    if ([...tags].some((t) => tagsAlvo.has(t))) definirHabilitada(handle, false);
   }
 }
 
 /**
- * Aplica um allowlist: desabilita tudo e reabilita só o que tem as tags
- * pedidas. A ordem importa — uma tool com duas tags precisa sobreviver se
- * qualquer uma delas estiver ativa.
+ * Aplica um allowlist: cada tool fica ativa se, e só se, tiver alguma das tags
+ * pedidas — o `some` é o que faz uma tool de duas tags sobreviver quando
+ * qualquer uma delas está ativa.
+ *
+ * Passo único, e não "desabilita tudo, depois reabilita o que fica". Os dois
+ * chegam ao mesmo estado, mas o de dois passos apaga e reacende cada tool que
+ * ia continuar ativa — duas notificações por tool para não mudar nada.
  */
 export function applyProfile(tagsAtivas) {
-  for (const { handle } of registered.values()) handle.disable();
-  enableByTags(tagsAtivas);
+  for (const { handle, tags } of registered.values()) {
+    definirHabilitada(handle, [...tags].some((t) => tagsAtivas.has(t)));
+  }
 }
 
 /** Reexporta o `z` para as tools, evitando um import a mais em cada arquivo. */

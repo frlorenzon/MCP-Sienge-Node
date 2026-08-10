@@ -48,10 +48,34 @@ test("licença assinada por outra chave é rejeitada", () => {
 // MÓDULOS
 // %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-test("catálogo cobre as 106 tools sem repetição", () => {
-  assert.equal(modules.TOOL_TAGS.size, 106);
+test("catálogo cobre todas as tools sem repetição", () => {
+  // Sem número fixo: o que importa é que as duas contagens batam. Se uma tool
+  // aparecesse em dois módulos, `toolCounts` a contaria duas vezes e o Map não.
   const total = Object.values(modules.toolCounts()).reduce((a, b) => a + b, 0);
-  assert.equal(total, 106);
+  assert.equal(modules.TOOL_TAGS.size, total);
+});
+
+test("todo módulo que não é o núcleo tem carregador no catálogo", () => {
+  // A garantia que o registro automático depende: o nome existe no catálogo e
+  // pertence ao núcleo, senão o carregador sumiria junto com o módulo que ele
+  // serve para carregar.
+  const doNucleo = new Set(modules.toolsIn("nucleo"));
+  for (const modulo of Object.keys(modules.MODULES)) {
+    if (modulo === "nucleo") continue;
+    const carregador = modules.nomeDoCarregador(modulo);
+    assert.ok(doNucleo.has(carregador), `${carregador} fora do núcleo`);
+    assert.deepEqual([...modules.tagsFor(carregador)], ["nucleo"]);
+  }
+});
+
+test("módulo sem 'chamada' não passa da importação", () => {
+  // O modo de falha que o registro automático poderia esconder: módulo com
+  // tools, sem texto para o carregador, inalcançável em silêncio.
+  for (const [nome, def] of Object.entries(modules.MODULES)) {
+    if (nome === "nucleo") continue;
+    assert.equal(typeof def.chamada, "string", `${nome} sem chamada`);
+    assert.ok(def.chamada.length > 40, `${nome}: chamada curta demais para decidir`);
+  }
 });
 
 test("SIENGE_PROFILE sempre inclui o núcleo", () => {
@@ -156,13 +180,21 @@ test("buscarTitulos devolve os títulos sob a chave 'bills'", async () => {
 test("carregar_compras traz as tools do módulo e diz quantas", async () => {
   const { client, call } = await servidorEmMemoria();
   try {
-    const antes = (await client.listTools()).tools.length;
+    const antes = (await client.listTools()).tools.map((t) => t.name);
     const r = await call("carregar_compras");
-    const depois = (await client.listTools()).tools.length;
+    const depois = (await client.listTools()).tools.map((t) => t.name);
 
     assert.equal(r.success, true);
-    assert.equal(r.tools.length, depois - antes, "o número relatado precisa bater");
     assert.ok(r.modulos_carregados.includes("compras"));
+
+    // Toda tool anunciada na resposta precisa estar de fato em tools/list: é
+    // pelos nomes que o modelo chama, sem depender de o cliente reindexar.
+    for (const nome of r.tools) assert.ok(depois.includes(nome), `${nome} não apareceu`);
+
+    // O que surgiu é o módulo, mais `descarregar_modulos` — que só passa a
+    // existir agora que há algo a descarregar.
+    const surgiram = depois.filter((n) => !antes.includes(n));
+    assert.deepEqual(surgiram.sort(), [...r.tools, "descarregar_modulos"].sort());
   } finally {
     await client.close();
   }
@@ -201,6 +233,7 @@ test("descarregar_modulos devolve o contexto das próximas mensagens", async () 
 test("o núcleo não pode ser descarregado", async () => {
   const { client, call } = await servidorEmMemoria();
   try {
+    await call("carregar_compras");
     const r = await call("descarregar_modulos", { modulos: ["nucleo"] });
     assert.equal(r.success, false);
     assert.match(r.error, /permanente/);
@@ -212,9 +245,152 @@ test("o núcleo não pode ser descarregado", async () => {
 test("descarregar_modulos recusa nome desconhecido", async () => {
   const { client, call } = await servidorEmMemoria();
   try {
+    await call("carregar_compras");
     const r = await call("descarregar_modulos", { modulos: ["inventado"] });
     assert.equal(r.success, false);
     assert.match(r.error, /Módulo desconhecido/);
+  } finally {
+    await client.close();
+  }
+});
+
+// %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+// DESCARREGAR_MODULOS SÓ QUANDO HÁ O QUE DESCARREGAR
+// %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+test("descarregar_modulos vai e volta conforme haja módulo carregado", async () => {
+  const { client, call } = await servidorEmMemoria();
+  const visivel = async () =>
+    (await client.listTools()).tools.some((t) => t.name === "descarregar_modulos");
+  try {
+    assert.equal(await visivel(), false, "com só o núcleo, não há o que descarregar");
+    await call("carregar_compras");
+    assert.equal(await visivel(), true, "carregou um módulo: agora há");
+    await call("descarregar_modulos", { modulos: ["compras"] });
+    assert.equal(await visivel(), false, "voltou ao núcleo: some de novo");
+  } finally {
+    await client.close();
+  }
+});
+
+test("descarregar_modulos desabilitada responde em vez de dar erro de protocolo", async () => {
+  const { client, call } = await servidorEmMemoria();
+  try {
+    const r = await call("descarregar_modulos", { modulos: ["compras"] });
+    assert.equal(r.success, false);
+    assert.match(r.error, /Nada a descarregar/);
+  } finally {
+    await client.close();
+  }
+});
+
+// %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+// NOTIFICAÇÕES DE MUDANÇA DE CATÁLOGO
+// %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+/**
+ * Conta as `tools/list_changed` que o cliente recebe. `enable()`/`disable()`
+ * do SDK notificam mesmo quando o estado não muda, e um cliente que reage à
+ * notificação refaz um `tools/list` por notificação recebida.
+ */
+async function contadorDeNotificacoes(client) {
+  const { ToolListChangedNotificationSchema } = await import(
+    "@modelcontextprotocol/sdk/types.js"
+  );
+  const estado = { n: 0 };
+  client.setNotificationHandler(ToolListChangedNotificationSchema, () => {
+    estado.n += 1;
+  });
+  return estado;
+}
+
+test("recarregar um módulo já carregado não anuncia mudança nenhuma", async () => {
+  const { client, call } = await servidorEmMemoria();
+  try {
+    await call("carregar_compras");
+    const contador = await contadorDeNotificacoes(client);
+    await call("carregar_compras");
+    // Deixa as notificações pendentes chegarem antes de conferir.
+    await new Promise((r) => setTimeout(r, 20));
+    assert.equal(contador.n, 0, "nada mudou de estado: não há o que anunciar");
+  } finally {
+    await client.close();
+  }
+});
+
+test("descarregar anuncia só as tools que de fato saíram", async () => {
+  // O descarregamento reafirma tudo o que continua carregado, para não derrubar
+  // as tools de tag cruzada. Sem a guarda, essa reafirmação sozinha anunciava
+  // uma mudança por tool do núcleo.
+  const { client, call } = await servidorEmMemoria();
+  try {
+    await call("carregar_compras");
+    const antes = (await client.listTools()).tools.length;
+    const contador = await contadorDeNotificacoes(client);
+    await call("descarregar_modulos", { modulos: ["compras"] });
+    const depois = (await client.listTools()).tools.length;
+    await new Promise((r) => setTimeout(r, 20));
+    assert.equal(contador.n, antes - depois, "uma notificação por tool que saiu, e só");
+  } finally {
+    await client.close();
+  }
+});
+
+// %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+// TOOL FORA DO MÓDULO CARREGADO
+// %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+test("tool de módulo não carregado devolve o nome do carregador", async () => {
+  // Sem isto o SDK responde `McpError: Tool ... disabled`, que não diz que a
+  // tool existe nem como alcançá-la — beco sem saída no caminho mais provável.
+  const { client, call } = await servidorEmMemoria();
+  try {
+    const r = await call("compras_pedidos_para_aprovar", {});
+    assert.equal(r.success, false);
+    assert.equal(r.modulo, "compras");
+    assert.equal(r.carregar_com, "carregar_compras");
+  } finally {
+    await client.close();
+  }
+});
+
+test("a dica some assim que o módulo é carregado", async () => {
+  // Depois do carregamento, a chamada precisa chegar no handler de verdade:
+  // se o interceptador continuasse respondendo, a tool estaria inalcançável.
+  const { client, call } = await servidorEmMemoria();
+  try {
+    await call("carregar_compras");
+    const r = await call("compras_pedidos_para_aprovar", {});
+    assert.equal(r.carregar_com, undefined, "não pode mais ser a dica");
+  } finally {
+    await client.close();
+  }
+});
+
+test("tool inexistente continua caindo no erro do SDK", async () => {
+  // Adivinhar um módulo para um nome inventado mandaria o modelo carregar algo
+  // à toa; o "not found" do SDK já é exato.
+  const { client } = await servidorEmMemoria();
+  try {
+    const r = await client.callTool({ name: "tool_que_nao_existe", arguments: {} });
+    assert.equal(r.isError, true);
+    assert.match(r.content[0].text, /not found/);
+  } finally {
+    await client.close();
+  }
+});
+
+test("tool prevista no catálogo mas não implementada se identifica como tal", async () => {
+  // `compras_historico_preco_insumo` está em TOOLS_BY_MODULE e ainda não foi
+  // registrada. Carregar o módulo não a traria — a resposta precisa dizer isso.
+  const { client, call } = await servidorEmMemoria();
+  try {
+    await call("carregar_compras");
+    const r = await call("compras_historico_preco_insumo", {});
+    assert.equal(r.success, false);
+    assert.match(r.error, /não existe nesta versão/);
+    assert.equal(r.modulo_previsto, "compras");
+    assert.equal(r.carregar_com, undefined);
   } finally {
     await client.close();
   }
