@@ -4,7 +4,111 @@ Servidor [MCP](https://modelcontextprotocol.io) para a API do
 [Sienge](https://www.sienge.com.br) — expõe consultas e operações do ERP como
 ferramentas que um assistente de IA pode chamar.
 
-JavaScript puro (ESM), sem etapa de build. `node src/index.js` e pronto.
+JavaScript puro (ESM), sem etapa de build.
+
+```bash
+npx -y mcp-sienge-node
+```
+
+## Instalação no Claude Desktop
+
+Edite o arquivo de configuração:
+
+| Sistema | Caminho |
+|---|---|
+| macOS | `~/Library/Application Support/Claude/claude_desktop_config.json` |
+| Windows | `%APPDATA%\Claude\claude_desktop_config.json` |
+
+```json
+{
+  "mcpServers": {
+    "sienge": {
+      "command": "npx",
+      "args": ["-y", "mcp-sienge-node"],
+      "env": {
+        "SIENGE_USERNAME": "seu-usuario",
+        "SIENGE_PASSWORD": "sua-senha",
+        "SIENGE_SUBDOMAIN": "sua-empresa",
+        "SIENGE_MCP_API_PACKAGE": "start"
+      }
+    }
+  }
+}
+```
+
+**Reinicie o Claude Desktop depois de salvar** — ele lê esse arquivo só na
+inicialização, e fechar a janela não encerra o processo. Use Cmd+Q (macOS) ou
+saia pela bandeja (Windows).
+
+Se preferir Bearer Token no lugar de usuário e senha, troque as duas primeiras
+variáveis por `"SIENGE_API_KEY": "sua-chave"`. `SIENGE_SUBDOMAIN` é sempre
+necessário: ele compõe a URL de toda chamada.
+
+<details>
+<summary>Configuração completa, com todas as variáveis</summary>
+
+```json
+{
+  "mcpServers": {
+    "sienge": {
+      "command": "npx",
+      "args": ["-y", "mcp-sienge-node"],
+      "env": {
+        "SIENGE_API_KEY": "sua-chave",
+        "SIENGE_SUBDOMAIN": "sua-empresa",
+        "SIENGE_PROFILE": "compras",
+        "SIENGE_MCP_API_PACKAGE": "start",
+        "SIENGE_MCP_LICENSE_KEY": "sua-licenca",
+        "SIENGE_MCP_LOG_LEVEL": "INFO",
+        "REQUEST_TIMEOUT": "30"
+      }
+    }
+  }
+}
+```
+
+</details>
+
+Outros clientes MCP (Claude Code, Cursor, Zed) usam o mesmo formato de
+`command`/`args`/`env`, em arquivo próprio.
+
+### Verificando que funcionou
+
+Depois de reiniciar, peça ao assistente: *"testa a conexão com o Sienge"*. Ele
+deve chamar `test_sienge_connection` e responder com a latência. Se a
+autenticação estiver incompleta, `get_auth_info` diz o que falta sem gastar
+chamada na API.
+
+## Configuração
+
+| Variável | Obrigatória | Para quê |
+|---|---|---|
+| `SIENGE_SUBDOMAIN` | ✅ | subdomínio da empresa; compõe a URL de toda chamada |
+| `SIENGE_API_KEY` | uma das duas | Bearer Token |
+| `SIENGE_USERNAME` + `SIENGE_PASSWORD` | uma das duas | Basic Auth |
+| `SIENGE_PROFILE` | — | recorte inicial. **Vazio = só o núcleo** (padrão); `all` carrega tudo; ou fixe: `compras,financeiro` |
+| `SIENGE_MCP_API_PACKAGE` | — | pacote contratado, para calcular o saldo diário de cota |
+| `SIENGE_MCP_LICENSE_KEY` | — | licença; sem ela o servidor funciona e avisa uma vez por sessão |
+
+Lista completa, incluindo caminhos de log e auditoria, em
+[`.env.example`](.env.example).
+
+## Como o catálogo é carregado
+
+O servidor sobe com **8 tools e ~1.300 tokens** de contexto. As demais entram
+sob demanda:
+
+```
+subida             8 tools   ~1.300 tokens
+carregar_compras   9 tools   ~1.700 tokens
+```
+
+Isso importa porque o catálogo é reenviado a cada mensagem. Carregar as 105
+tools de uma vez custaria ~19.000 tokens em toda requisição, mesmo numa
+conversa que toca um assunto só.
+
+Para uma operação que sempre usa os mesmos módulos, `SIENGE_PROFILE=compras`
+deixa o recorte pronto na subida, sem depender do carregamento dinâmico.
 
 ## Estado
 
@@ -17,6 +121,20 @@ catálogo, com toda a infraestrutura compartilhada pronta.
 | `compras` | 1 de 10 | 🔨 em andamento |
 | `compras_api` | 33 | coberto por `sienge_api_call` |
 | `titulos`, `financeiro`, `contratos`, `cotacoes` | 54 | pendente |
+
+### As tools de hoje
+
+| Tool | O que faz |
+|---|---|
+| `test_sienge_connection` | testa a credencial contra a API |
+| `get_auth_info` | qual mecanismo está configurado, sem chamar a API |
+| `get_sienge_api_quota` | consumo e saldo das cotas REST e BULK do dia |
+| `describe_purchase_process` | o processo de compras de ponta a ponta |
+| `carregar_compras` | traz as ferramentas de compras |
+| `descarregar_modulos` | libera o contexto de módulos já carregados |
+| `sienge_api_endpoints` | quais endpoints existem, por recurso |
+| `sienge_api_call` | chama um endpoint direto (só leitura, exige `deep_mode`) |
+| `compras_pedidos_para_aprovar` | a fila de aprovação resolvida numa chamada |
 
 ## O que já funciona
 
@@ -31,116 +149,45 @@ catálogo, com toda a infraestrutura compartilhada pronta.
   nunca é truncado
 - **Gate de confirmação** para operações de alto impacto: a primeira chamada
   devolve uma prévia, e só executa com `confirm: true`
-- **Catálogo por módulo** — o servidor sobe com o núcleo apenas (~1.300
-  tokens); `carregar_compras` traz o resto sob demanda, e `SIENGE_PROFILE`
-  fixa um recorte maior quando a operação sempre usa os mesmos módulos
+- **Modo profundo** — `sienge_api_call` alcança 59 endpoints da API por ~535
+  tokens, no lugar dos milhares que uma tool por endpoint custaria
 - **Licenciamento Ed25519 offline**, com `node:crypto`, sem dependência externa
 
-## Uso
-
-Publicado como [`mcp-sienge-node`](https://www.npmjs.com/package/mcp-sienge-node).
-Não precisa instalar nada: aponte seu cliente MCP para o pacote e o `npx`
-resolve o resto.
-
-```json
-{
-  "mcpServers": {
-    "sienge": {
-      "command": "npx",
-      "args": ["-y", "mcp-sienge-node"],
-      "env": {
-        "SIENGE_API_KEY": "sua-chave",
-        "SIENGE_SUBDOMAIN": "sua-empresa",
-        "SIENGE_MCP_API_PACKAGE": "start"
-      }
-    }
-  }
-}
-```
-
-Ou instalando globalmente:
+## Desenvolvimento
 
 ```bash
-npm install -g mcp-sienge-node
-```
-
-### A partir do código-fonte
-
-```bash
+git clone https://github.com/frlorenzon/MCP-Sienge-Node.git
+cd MCP-Sienge-Node
 npm install
 cp .env.example .env   # preencha as credenciais
 npm start
 ```
 
-Neste caso o registro no cliente MCP fica como em `.mcp.json`.
+### Verificação
 
-### Configuração essencial
-
-| Variável | Para quê |
-|---|---|
-| `SIENGE_API_KEY` **ou** `SIENGE_USERNAME`+`SIENGE_PASSWORD` | autenticação |
-| `SIENGE_SUBDOMAIN` | subdomínio da empresa, compõe a URL de toda chamada |
-| `SIENGE_PROFILE` | recorte inicial: **vazio = só o núcleo** (padrão), `all`, ou `compras,financeiro` |
-| `SIENGE_MCP_API_PACKAGE` | pacote contratado, para calcular o saldo diário |
-
-Lista completa em `.env.example`.
-
-## Verificação
-
-Nenhum dos dois comandos toca a API — rodam offline e não consomem cota.
-
-```bash
-npm run check
-```
-
-Sobe o servidor em memória, pede `tools/list` e confere contra
-`contract/catalogo-tools.json`: nome, descrição, tipo, obrigatoriedade, default
-e descrição de cada parâmetro. Pega o defeito que não quebra teste nenhum e
-muda todas as chamadas — um default trocado, uma descrição perdida.
-
-`npm run check -- --pendentes` lista o que falta implementar, por módulo.
+Nenhum dos comandos toca a API — rodam offline e não consomem cota.
 
 ```bash
 npm test
 ```
 
 Comportamento, com `fetch` dublado: política de retry, tradução de erro,
-diagnóstico de 429, recorte por módulos, licenciamento e tools de descoberta.
-
-## Implementando um módulo
-
-O catálogo já especifica schema e descrição de todas as tools, então o
-esqueleto sai pronto:
+diagnóstico de 429, carregamento de módulos, licenciamento, serialização e a
+travessia da fila de aprovação. Sobe o servidor como subprocesso para testar o
+handshake real.
 
 ```bash
-node scripts/generate-schemas.js titulos --out src/tools/titulos.js
+npm run check
 ```
 
-Gera as tools do módulo com os schemas Zod completos, defaults e descrições —
-restam os handlers, marcados com `TODO`. Depois de escrevê-los, `npm run check`
-confirma que a interface não divergiu da especificação.
+Confere as tools implementadas contra `contract/catalogo-tools.json`: nome,
+descrição, tipo, obrigatoriedade, default e descrição de cada parâmetro. Pega o
+defeito que não quebra teste nenhum e muda todas as chamadas — um default
+trocado, uma descrição perdida.
 
-Não há módulo de cadastros: clientes, credores e obras são o *join* que uma
-tool de negócio resolve por dentro, não a pergunta. Eles vivem em `src/apis/`,
-que não custa contexto.
+`npm run check -- --pendentes` lista o que falta implementar, por módulo.
 
-`node scripts/generate-schemas.js --list` mostra os módulos disponíveis.
-
-## Adicionando um endpoint
-
-Cada arquivo de `src/apis/` declara em `ENDPOINTS` os paths que cobre. Depois
-de acrescentar um:
-
-```bash
-npm run endpoints
-```
-
-Isso regenera `contract/endpoints.json`, que é o que `sienge_api_endpoints`
-responde ao modelo e o que um 404 usa para sugerir o path certo. `npm test`
-falha se um módulo chamar um path que não declarou, ou se o inventário ficar
-para trás.
-
-## Estrutura
+### Estrutura
 
 ```
 src/
@@ -155,11 +202,7 @@ src/
 │   ├── errors.js       catálogo de erros conhecidos do Sienge
 │   ├── cache.js        TTL em memória
 │   └── paginate.js     varredura limit/offset
-├── utils/
-│   ├── paths.js        ~/.sienge-mcp
-│   ├── logger.js       diagnóstico (nunca em stdout)
-│   ├── audit.js        trilha de escritas (AsyncLocalStorage)
-│   └── apiQuota.js     cotas REST/BULK diárias
+├── utils/              paths, logger, auditoria, cotas
 ├── apis/               tradução da API: um arquivo por recurso do Sienge,
 │   ├── _helpers.js     com o nome do recurso. Não custa contexto — existe
 │   ├── purchase-orders.js   para as tools comporem sem repetir código, e
@@ -167,6 +210,9 @@ src/
 │   ├── customers.js
 │   ├── cost-centers.js
 │   ├── enterprises.js
+│   ├── units.js
+│   ├── payment-categories.js
+│   ├── customer-types.js
 │   └── bills.js
 ├── workflows/
 │   ├── connection.js   diagnóstico de conectividade
@@ -178,6 +224,38 @@ src/
     ├── deep.js         sienge_api_endpoints + sienge_api_call
     └── compras.js      camada de intenção de compras
 ```
+
+O desenho central: `tools/` é a superfície MCP e **custa tokens em toda
+requisição**; `apis/` é tradução de endpoint e **não custa nada**. Toda lógica
+que puder descer para `apis/` ou `workflows/` deve descer.
+
+### Adicionando um endpoint
+
+Cada arquivo de `src/apis/` declara em `ENDPOINTS` os paths que cobre. Depois
+de acrescentar um:
+
+```bash
+npm run endpoints
+```
+
+Isso regenera `contract/endpoints.json`, que é o que `sienge_api_endpoints`
+responde ao modelo e o que um 404 usa para sugerir o path certo. `npm test`
+falha se um módulo chamar um path que não declarou, ou se o inventário ficar
+para trás.
+
+### Adicionando uma tool
+
+```bash
+node scripts/generate-schemas.js titulos --out src/tools/titulos.js
+```
+
+Gera as tools do módulo com os schemas Zod completos, defaults e descrições —
+restam os handlers, marcados com `TODO`. Depois de escrevê-los, `npm run check`
+confirma que a interface não divergiu da especificação.
+
+Não há módulo de cadastros: clientes, credores e obras são o *join* que uma
+tool de negócio resolve por dentro, não a pergunta. Eles vivem em `src/apis/`,
+que não custa contexto.
 
 ## Licença
 
