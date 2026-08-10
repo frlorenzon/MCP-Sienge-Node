@@ -15,7 +15,7 @@ const MAX_PAGE_SIZE = 200;
  * ⚠️ Em caso de falha da API isto NÃO devolve uma lista, e sim o objeto
  * `{success: false, error, message}`. Quem chama precisa checar
  * `Array.isArray()` antes de tratar o retorno como coleção — é o que
- * `api/entities.js` faz. Ver `docs/notas-tecnicas.md`.
+ * `apis/` faz. Ver `docs/notas-tecnicas.md`.
  */
 export async function fetchAllPaginated({
   endpoint,

@@ -95,3 +95,44 @@ export function cacheKey(prefixo, params) {
   const ordenados = Object.entries(params).sort(([a], [b]) => a.localeCompare(b));
   return `${prefixo}:${JSON.stringify(ordenados)}`;
 }
+
+/** Confere um valor contra o enum do spec antes de chamar a API. */
+export function validarEnum(nome, valor, aceitos) {
+  if (valor === null || valor === undefined) return null;
+  if (!aceitos.includes(valor)) {
+    throw new Error(
+      `${nome} deve ser um de ${aceitos.join(", ")} — recebido ${JSON.stringify(valor)}`
+    );
+  }
+  return valor;
+}
+
+/**
+ * Normaliza as respostas paginadas do Sienge (`results` + `resultSetMetadata`)
+ * numa forma estável: itens sob a chave que o chamador nomeia, e os metadados
+ * de paginação promovidos ao topo.
+ */
+export function normalizarLista(resposta, chave, contexto) {
+  if (!resposta.success) {
+    return {
+      success: false,
+      message: `❌ ${contexto}`,
+      error: resposta.error,
+      details: resposta.message,
+    };
+  }
+
+  const dados = resposta.data || {};
+  const ehObjeto = dados && typeof dados === "object" && !Array.isArray(dados);
+  const itens = ehObjeto ? dados.results ?? [] : dados || [];
+  const meta = ehObjeto ? dados.resultSetMetadata ?? {} : {};
+
+  return {
+    success: true,
+    [chave]: itens,
+    count: itens.length,
+    total: meta.count ?? itens.length,
+    offset: meta.offset ?? 0,
+    limit: meta.limit,
+  };
+}

@@ -1,7 +1,7 @@
 {
   "name": "mcp-sienge-node",
   "version": "0.1.0",
-  "description": "Servidor MCP para a API do Sienge — consultas e operações do ERP expostas como ferramentas para assistentes de IA.",
+  "description": "Servidor MCP para a API do Sienge \u2014 consultas e opera\u00e7\u00f5es do ERP expostas como ferramentas para assistentes de IA.",
   "type": "module",
   "main": "src/index.js",
   "bin": {
@@ -10,6 +10,7 @@
   "files": [
     "src/",
     "!src/tools/cadastros.js",
+    "contract/endpoints.json",
     "README.md",
     "LICENSE",
     ".env.example"
@@ -17,6 +18,7 @@
   "scripts": {
     "start": "node src/index.js",
     "check": "node scripts/check-schemas.js",
+    "endpoints": "node scripts/build-endpoints.js",
     "gen:schemas": "node scripts/generate-schemas.js",
     "test": "node --test \"test/**/*.test.js\""
   },

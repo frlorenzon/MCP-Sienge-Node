@@ -22,7 +22,9 @@
  * a item — o caminho é `sienge_api_call` com `deep_mode`.
  */
 
-import * as entities from "../api/entities.js";
+import * as purchaseOrders from "../apis/purchase-orders.js";
+import * as creditors from "../apis/creditors.js";
+import * as costCenters from "../apis/cost-centers.js";
 
 const num = (v, padrao) => {
   const n = Number.parseFloat(v);
@@ -159,7 +161,7 @@ async function buscarItensEmLote(makeRequest, ids, concorrencia) {
   const pares = await comFreio(ids, concorrencia, async (pedidoId) => {
     let resposta;
     try {
-      resposta = await entities.buscarItensDoPedido(makeRequest, pedidoId);
+      resposta = await purchaseOrders.buscarItens(makeRequest, pedidoId);
     } catch (erro) {
       // A varredura não pode morrer por causa de um pedido.
       falhas.push({ pedido: pedidoId, erro: String(erro?.message ?? erro) });
@@ -225,7 +227,7 @@ async function resolverNomes(makeRequest, deps, ids, concorrencia, opts) {
 const resolverFornecedores = (makeRequest, deps, ids, c) =>
   resolverNomes(makeRequest, deps, ids, c, {
     prefixo: "credor",
-    buscar: entities.buscarCredor,
+    buscar: creditors.buscarCredor,
     chaveResposta: "creditor",
     campos: NOME_CREDOR,
   });
@@ -234,7 +236,7 @@ const resolverFornecedores = (makeRequest, deps, ids, c) =>
 const resolverObras = (makeRequest, deps, ids, c) =>
   resolverNomes(makeRequest, deps, ids, c, {
     prefixo: "obra",
-    buscar: entities.buscarCentroDeCusto,
+    buscar: costCenters.buscarCentroDeCusto,
     chaveResposta: "costCenter",
     campos: NOME_OBRA,
   });
@@ -375,7 +377,7 @@ export async function analisarPedidosParaAprovacao(makeRequest, deps = {}, opts 
   const teto = Math.max(1, Math.min(Number(max_pedidos || 50), MAX_PEDIDOS_TETO));
   const [inicio, fim] = janela(start_date, end_date, JANELA_TRIAGEM_DIAS);
 
-  const lista = await entities.buscarPedidos(makeRequest, {
+  const lista = await purchaseOrders.buscarPedidos(makeRequest, {
     start_date: inicio,
     end_date: fim,
     authorized: false,

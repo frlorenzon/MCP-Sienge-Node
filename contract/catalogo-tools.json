@@ -5801,7 +5801,7 @@
   },
   {
     "name": "sienge_api_call",
-    "description": "Chama um endpoint da API do Sienge diretamente, para leituras que as tools de negócio não cobrem — anexos, apropriações, previsões de entrega, avaliação de fornecedor e afins.\n\nSó leitura (GET). Antes de usar, verifique se existe tool específica para o que precisa: elas resolvem o join no servidor e custam muito menos chamadas. Esta é o caminho para o caso não previsto, não o atalho para o caso comum.\n\n`path` é relativo à raiz da API e começa com barra: \"/purchase-orders/123/items\", \"/creditors/45\", \"/cost-centers\". A documentação dos endpoints está em https://api.sienge.com.br/docs.\n\nExige deep_mode: true.",
+    "description": "Chama um endpoint da API do Sienge diretamente, para leituras que as tools de negócio não cobrem — anexos, apropriações, previsões de entrega e afins.\n\nSó leitura (GET). Antes de usar, verifique se existe tool específica para o que precisa: elas resolvem o join no servidor e custam muito menos chamadas. Esta é o caminho para o caso não previsto, não o atalho para o caso comum.\n\nUse sienge_api_endpoints para descobrir o path. Se errar, a resposta sugere os endpoints daquele recurso.\n\nExige deep_mode: true.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -5836,6 +5836,27 @@
         "path",
         "deep_mode"
       ],
+      "additionalProperties": false,
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    },
+    "tags": [
+      "nucleo"
+    ]
+  },
+  {
+    "name": "sienge_api_endpoints",
+    "description": "Lista os endpoints da API do Sienge conhecidos por este servidor, para montar uma chamada com sienge_api_call.\n\nSem argumento, devolve só os nomes dos recursos. Com `recurso`, devolve os endpoints daquele recurso — consulte assim para não pagar o inventário inteiro por um caminho só.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "recurso": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "nome do recurso, sem barra — ex: \"purchase-orders\", \"bills\""
+        }
+      },
       "additionalProperties": false,
       "$schema": "http://json-schema.org/draft-07/schema#"
     },

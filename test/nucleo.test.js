@@ -11,7 +11,7 @@ process.env.SIENGE_MCP_HOME = "/tmp/sienge-mcp-test";
 const licensing = await import("../src/licensing.js");
 const modules = await import("../src/modules.js");
 const discovery = await import("../src/workflows/discovery.js");
-const entities = await import("../src/api/entities.js");
+const bills = await import("../src/apis/bills.js");
 
 // %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 // LICENCIAMENTO
@@ -163,11 +163,11 @@ function requestFalso(data) {
   return async () => ({ success: true, data, latency_ms: 1, request_id: "t" });
 }
 
-test("getBills devolve os títulos sob a chave 'bills'", async () => {
-  // Regressão: se getBills devolver os itens sob 'results' em vez de 'bills',
+test("buscarTitulos devolve os títulos sob a chave 'bills'", async () => {
+  // Regressão: se buscarTitulos devolver os itens sob 'results' em vez de 'bills',
   // discovery não os encontra e a busca de títulos responde vazio COM
   // success: true — falha indistinguível de "não há títulos no período".
-  const r = await entities.getBills(
+  const r = await bills.buscarTitulos(
     requestFalso({
       results: [{ billId: 1, documentNumber: "NF-001" }],
       resultSetMetadata: { count: 1 },

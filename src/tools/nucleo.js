@@ -18,7 +18,11 @@ import { getAuthInfo } from "../config.js";
 import * as apiQuota from "../utils/apiQuota.js";
 import * as tagRegistry from "../modules.js";
 import * as discovery from "../workflows/discovery.js";
-import * as entities from "../api/entities.js";
+import * as customers from "../apis/customers.js";
+import * as creditors from "../apis/creditors.js";
+import * as enterprises from "../apis/enterprises.js";
+import * as purchaseOrders from "../apis/purchase-orders.js";
+import * as bills from "../apis/bills.js";
 import { describePurchaseProcess } from "../knowledge/purchaseProcess.js";
 import { contarPorTag, enableByTags, disableByTags, registered } from "../registry.js";
 
@@ -34,21 +38,21 @@ const adaptadores = {
   // A API de clientes não tem busca por nome; discovery classifica esta
   // entidade como filtrada na amostra e cuida do filtro.
   customers: (args = {}) =>
-    entities.buscarClientes(makeSiengeRequest, deps, {
+    customers.buscarClientes(makeSiengeRequest, deps, {
       limit: args.limit ?? 50,
       offset: args.offset ?? 0,
     }),
 
   // `creditor` é o parâmetro de busca real desta API — o servidor filtra.
   creditors: (args = {}) =>
-    entities.buscarCredores(makeSiengeRequest, deps, {
+    creditors.buscarCredores(makeSiengeRequest, deps, {
       limit: args.limit ?? 50,
       offset: args.offset ?? 0,
       creditor: args.search,
     }),
 
   projects: (args = {}) =>
-    entities.buscarEmpreendimentos(makeSiengeRequest, {
+    enterprises.buscarEmpreendimentos(makeSiengeRequest, {
       limit: args.limit ?? 100,
       offset: args.offset ?? 0,
       company_id: args.company_id,
@@ -56,7 +60,7 @@ const adaptadores = {
 
   // O período é resolvido por discovery, relativo a hoje.
   bills: (args = {}) =>
-    entities.getBills(makeSiengeRequest, {
+    bills.buscarTitulos(makeSiengeRequest, {
       start_date: args.start_date,
       end_date: args.end_date,
       creditor_id: args.creditor_id,
@@ -65,7 +69,7 @@ const adaptadores = {
     }),
 
   purchase_orders: (args = {}) =>
-    entities.buscarPedidos(makeSiengeRequest, {
+    purchaseOrders.buscarPedidos(makeSiengeRequest, {
       supplier_id: args.supplier_id,
       building_id: args.building_id,
       limit: args.limit ?? 100,

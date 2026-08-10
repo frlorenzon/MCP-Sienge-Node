@@ -123,6 +123,20 @@ descrições — restam os handlers, marcados com `TODO`. Depois de escrevê-los
 
 `node scripts/generate-schemas.js --list` mostra os módulos disponíveis.
 
+## Adicionando um endpoint
+
+Cada arquivo de `src/apis/` declara em `ENDPOINTS` os paths que cobre. Depois
+de acrescentar um:
+
+```bash
+npm run endpoints
+```
+
+Isso regenera `contract/endpoints.json`, que é o que `sienge_api_endpoints`
+responde ao modelo e o que um 404 usa para sugerir o path certo. `npm test`
+falha se um módulo chamar um path que não declarou, ou se o inventário ficar
+para trás.
+
 ## Estrutura
 
 ```
@@ -143,15 +157,20 @@ src/
 │   ├── logger.js       diagnóstico (nunca em stdout)
 │   ├── audit.js        trilha de escritas (AsyncLocalStorage)
 │   └── apiQuota.js     cotas REST/BULK diárias
-├── api/
-│   ├── _restHelpers.js padrões de listagem e cache
-│   └── entities.js     as 5 consultas de que o núcleo depende
+├── apis/               tradução da API: um arquivo por recurso do Sienge,
+│   ├── _helpers.js     com o nome do recurso. Não custa contexto — existe
+│   ├── purchase-orders.js   para as tools comporem sem repetir código, e
+│   ├── creditors.js    cada módulo declara os ENDPOINTS que cobre.
+│   ├── customers.js
+│   ├── cost-centers.js
+│   ├── enterprises.js
+│   └── bills.js
 ├── workflows/
 │   └── discovery.js    busca e paginação
 ├── knowledge/          processo de compras (conhecimento, não API)
 └── tools/
     ├── nucleo.js       as 10 tools sempre visíveis
-    ├── deep.js         sienge_api_call — acesso cru, gated por deep_mode
+    ├── deep.js         sienge_api_endpoints + sienge_api_call
     ├── compras.js      camada de intenção de compras
     └── cadastros.js    esqueleto, ainda não registrado
 ```
