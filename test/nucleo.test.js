@@ -258,3 +258,60 @@ test("SIENGE_DEEP_MODE aceita as formas usuais de dizer sim", async () => {
     else delete process.env.SIENGE_DEEP_MODE;
   }
 });
+
+test("describe_purchase_process não recomenda tool que não existe", async () => {
+  // O conhecimento foi escrito quando havia 131 tools; aqui há 9. Citar as
+  // outras 37 fazia o modelo sair procurando o que o próprio servidor
+  // prometeu e não tem — e insistir, porque a fonte era confiável.
+  const { client, call } = await servidorEmMemoria();
+  try {
+    const existentes = new Set((await client.listTools()).tools.map((t) => t.name));
+    const r = await call("describe_purchase_process");
+
+    const { registered } = await import("../src/registry.js");
+    const todas = new Set(registered.keys());
+
+    for (const etapa of r.etapas) {
+      // `tools` são as chamáveis agora.
+      for (const t of etapa.tools) {
+        assert.ok(existentes.has(t), `etapa ${etapa.etapa} recomenda '${t}', não visível`);
+      }
+      // `tools_apos_carregar` existem, só estão atrás de um carregador.
+      for (const t of etapa.tools_apos_carregar ?? []) {
+        assert.ok(todas.has(t), `etapa ${etapa.etapa} promete '${t}', que não existe`);
+        assert.match(etapa.como_habilitar, /carregar_/);
+      }
+      // Etapa sem caminho nenhum precisa dizer por onde ir, não sumir em silêncio.
+      const alcancavel = etapa.tools.length + (etapa.tools_apos_carregar?.length ?? 0);
+      if (alcancavel === 0) {
+        assert.match(etapa.cobertura_mcp, /sem tool dedicada/);
+        assert.match(etapa.como_fazer, /sienge_api_call|próprio Sienge/);
+        assert.equal(etapa.por_onde_comecar, undefined, "apontaria para tool inexistente");
+      }
+    }
+    assert.match(r.aviso_de_cobertura, /das \d+ etapas/);
+  } finally {
+    await client.close();
+  }
+});
+
+test("cobertura declarada bate com o que está registrado", async () => {
+  const { client, call } = await servidorEmMemoria();
+  try {
+    const r = await call("describe_purchase_process");
+    for (const e of r.etapas) {
+      const alcancavel = e.tools.length + (e.tools_apos_carregar?.length ?? 0);
+      if (alcancavel > 0) {
+        assert.notEqual(e.cobertura_mcp, "sem tool dedicada nesta versão");
+      } else {
+        assert.match(e.cobertura_mcp, /sem tool dedicada/);
+      }
+      // "completa" só quando todas as previstas são alcançáveis.
+      if (e.cobertura_mcp === "completa") {
+        assert.doesNotMatch(String(e.cobertura_mcp), /parcial/);
+      }
+    }
+  } finally {
+    await client.close();
+  }
+});

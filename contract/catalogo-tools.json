@@ -13,7 +13,7 @@
   },
   {
     "name": "describe_purchase_process",
-    "description": "Explica o processo de compras do Sienge de ponta a ponta: as 5 etapas, quais\nsão opcionais, os caminhos válidos e os limites da API.\n\nConsulte ANTES de responder qualquer pergunta sobre solicitações, cotações,\npedidos de compra ou aprovações. Evita os erros mais comuns — procurar preço\nnuma solicitação de compra, que não tem preço, ou supor que todo pedido\nnasceu de uma solicitação.",
+    "description": "Explica o processo de compras do Sienge de ponta a ponta: as 5 etapas, quais\nsão opcionais, os caminhos válidos e os limites da API.\n\nConsulte ANTES de responder qualquer pergunta sobre solicitações, cotações,\npedidos de compra ou aprovações. Evita os erros mais comuns — procurar preço\nnuma solicitação de compra, que não tem preço, ou supor que todo pedido\nnasceu de uma solicitação.\n\nA resposta diz, por etapa, quais tools este servidor tem de fato: nem toda\netapa do processo é coberta.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {},

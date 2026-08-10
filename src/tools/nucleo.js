@@ -16,6 +16,8 @@ import { getAuthInfo } from "../config.js";
 import * as apiQuota from "../utils/apiQuota.js";
 import * as connection from "../workflows/connection.js";
 import { describePurchaseProcess } from "../knowledge/purchaseProcess.js";
+import { registered } from "../registry.js";
+import * as tagRegistry from "../modules.js";
 
 // %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 // REGISTRO
@@ -79,8 +81,24 @@ export function registrarNucleo(server) {
       "Consulte ANTES de responder qualquer pergunta sobre solicitações, cotações,\n" +
       "pedidos de compra ou aprovações. Evita os erros mais comuns — procurar preço\n" +
       "numa solicitação de compra, que não tem preço, ou supor que todo pedido\n" +
-      "nasceu de uma solicitação.",
-    handler: () => describePurchaseProcess(),
+      "nasceu de uma solicitação.\n\n" +
+      "A resposta diz, por etapa, quais tools este servidor tem de fato: nem toda\n" +
+      "etapa do processo é coberta.",
+    handler: () => {
+      // Distingue o que se pode chamar agora do que existe atrás de um
+      // `carregar_<modulo>`: as duas coisas pedem reações diferentes, e
+      // confundi-las manda o modelo procurar o que não vai encontrar.
+      const visiveis = new Set();
+      const todas = new Set();
+      const comoCarregar = new Map();
+      for (const [nome, { handle, tags }] of registered) {
+        todas.add(nome);
+        if (handle.enabled !== false) visiveis.add(nome);
+        const modulo = [...tags].find((t) => t !== tagRegistry.CORE_MODULE);
+        if (modulo) comoCarregar.set(nome, `carregar_${modulo}`);
+      }
+      return describePurchaseProcess({ visiveis, registradas: todas, comoCarregar });
+    },
   });
 
   // ---------- Busca e paginação ----------
