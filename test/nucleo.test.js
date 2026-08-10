@@ -161,7 +161,7 @@ test("carregar_compras traz as tools do módulo e diz quantas", async () => {
     const depois = (await client.listTools()).tools.length;
 
     assert.equal(r.success, true);
-    assert.equal(r.tools_disponiveis, depois - antes, "o número relatado precisa bater");
+    assert.equal(r.tools.length, depois - antes, "o número relatado precisa bater");
     assert.ok(r.modulos_carregados.includes("compras"));
   } finally {
     await client.close();
@@ -311,6 +311,27 @@ test("cobertura declarada bate com o que está registrado", async () => {
         assert.doesNotMatch(String(e.cobertura_mcp), /parcial/);
       }
     }
+  } finally {
+    await client.close();
+  }
+});
+
+test("carregar_compras devolve os nomes, não só a contagem", async () => {
+  // O servidor emite notifications/tools/list_changed, mas nem todo cliente
+  // reindexa ao receber. Quando não reindexa, "2 tools carregadas" deixa o
+  // modelo sem saber quais são e sem entender por que não as encontra.
+  const { client, call } = await servidorEmMemoria();
+  try {
+    const r = await call("carregar_compras");
+    assert.ok(Array.isArray(r.tools), "precisa devolver os nomes");
+    assert.ok(r.tools.includes("compras_pedidos_para_aprovar"));
+
+    // E os nomes precisam ser chamáveis de fato, não só listados.
+    const visiveis = new Set((await client.listTools()).tools.map((t) => t.name));
+    for (const nome of r.tools) {
+      assert.ok(visiveis.has(nome), `'${nome}' foi anunciado mas não está ativo`);
+    }
+    assert.match(r.como_usar, /chame-os pelo nome|SIENGE_PROFILE/);
   } finally {
     await client.close();
   }

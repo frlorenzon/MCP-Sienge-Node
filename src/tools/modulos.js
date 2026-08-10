@@ -17,7 +17,13 @@
  */
 
 import { z } from "zod";
-import { registerTool, contarPorTag, enableByTags, disableByTags } from "../registry.js";
+import {
+  registerTool,
+  contarPorTag,
+  enableByTags,
+  disableByTags,
+  registered,
+} from "../registry.js";
 import * as tagRegistry from "../modules.js";
 
 /**
@@ -60,12 +66,27 @@ function registrarCarregador(server, modulo, descricao) {
       carregados.add(modulo);
       enableByTags(new Set([modulo]));
 
+      // Os nomes, não só a contagem. O servidor emite
+      // `notifications/tools/list_changed` ao habilitar, mas nem todo cliente
+      // reindexa a lista ao recebê-la — e quando não reindexa, o modelo recebe
+      // "2 tools carregadas" e não consegue encontrar nenhuma. Com os nomes
+      // exatos em mãos, ele chama direto, sem depender da busca.
+      const nomes = [...registered]
+        .filter(([, { tags }]) => tags.has(modulo))
+        .map(([nome]) => nome)
+        .sort();
+
       return {
         success: true,
         modulo,
-        tools_disponiveis: quantas,
+        tools: nomes,
         ja_estava_carregado: jaEstava || undefined,
         modulos_carregados: [...carregados].filter((m) => disponiveis[m] > 0).sort(),
+        como_usar:
+          "Os nomes acima são exatos e já estão ativos. Se a sua lista de " +
+          "ferramentas ainda não os mostrar, chame-os pelo nome mesmo — alguns " +
+          "clientes demoram a recarregar. Se ainda assim falhar, configure " +
+          `SIENGE_PROFILE=${modulo} no servidor: aí o módulo já sobe carregado.`,
       };
     },
   });

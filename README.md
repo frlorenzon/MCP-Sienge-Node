@@ -155,6 +155,12 @@ conversa que toca um assunto só.
 Para uma operação que sempre usa os mesmos módulos, `SIENGE_PROFILE=compras`
 deixa o recorte pronto na subida, sem depender do carregamento dinâmico.
 
+> **Se as ferramentas não aparecerem depois de `carregar_compras`**, o cliente
+> pode não ter reindexado a lista — o servidor emite a notificação, mas alguns
+> clientes demoram a reagir. A resposta do carregamento traz os nomes exatos,
+> que podem ser chamados diretamente. Para evitar de vez, configure
+> `SIENGE_PROFILE=compras`: aí o módulo já sobe carregado.
+
 `SIENGE_PROFILE` não é obrigatório: sem ele o servidor já sobe no mínimo.
 `minimo`, `minimal`, `min`, `core` e `nucleo` são sinônimos desse padrão, e um
 valor não reconhecido também cai nele — restringir por engano é preferível a

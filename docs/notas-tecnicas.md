@@ -100,6 +100,36 @@ caso.
 
 ---
 
+## O carregamento dinâmico depende do cliente reindexar
+
+`carregar_<modulo>` habilita as tools e o SDK emite
+`notifications/tools/list_changed` — verificado: duas notificações por
+carregamento, e um `tools/list` seguinte já traz as tools novas.
+
+O que o servidor não controla é o outro lado. Clientes que fazem busca
+semântica sobre o catálogo mantêm um índice próprio, e nem todos o reconstroem
+ao receber a notificação. Quando isso acontece, o sintoma é confuso: o
+carregamento responde com sucesso, as tools estão ativas no servidor, e o
+modelo não consegue encontrá-las na busca. Foi relatado como *"o módulo foi
+carregado mas a ferramenta não aparece"*.
+
+Duas mitigações, ambas no que o servidor pode fazer:
+
+**A resposta traz os nomes, não só a contagem.** Antes dizia
+`tools_disponiveis: 2`; agora devolve `tools: ["compras_aprovar_pedidos",
+"compras_pedidos_para_aprovar"]`. Com o nome exato em mãos, o modelo chama
+direto, sem depender da busca ter reindexado.
+
+**E diz o que fazer se ainda assim falhar**: configurar `SIENGE_PROFILE` com o
+módulo. O recorte estático é resolvido na subida e chega pronto no primeiro
+`tools/list`, sem depender de notificação nenhuma.
+
+Para uma operação que sempre usa os mesmos módulos, o perfil estático é a
+opção mais previsível — o carregamento dinâmico existe para a conversa que
+muda de assunto, não para o uso corrente.
+
+---
+
 ## O campo que o SDK injeta e não precisa ser enviado
 
 O SDK anexa `execution: { taskSupport: "forbidden" }` a toda tool registrada,
