@@ -79,10 +79,21 @@ test("módulo desconhecido no perfil avisa e não derruba", () => {
   assert.match(avisos[0], /inexistente/);
 });
 
-test("perfil só com lixo cai para 'todas', com aviso", () => {
+test("perfil não reconhecido cai no padrão, não em 'tudo'", () => {
+  // Um valor inválido é quase sempre erro de digitação de quem queria
+  // restringir. Abrir o catálogo inteiro daria a esse engano mais acesso e
+  // mais custo do que não configurar nada — falha na direção errada.
   const { modulos, avisos } = modules.parseProfile("xpto,foo");
-  assert.equal(modulos, null, "melhor tudo visível do que nada acessível");
+  assert.deepEqual([...modulos], ["nucleo"]);
   assert.ok(avisos.some((a) => /nenhum módulo válido/.test(a)));
+});
+
+test("'minimal' e 'min' valem o mesmo que 'mínimo'", () => {
+  // O projeto mistura nomes em português e inglês; quem escreve 'minimal'
+  // está pedindo a mesma coisa. Antes caía em desconhecido e abria tudo.
+  for (const alias of ["minimo", "mínimo", "minimal", "min", "minimum", "core", "nucleo"]) {
+    assert.deepEqual([...modules.parseProfile(alias).modulos], ["nucleo"], `alias '${alias}'`);
+  }
 });
 
 test("tool fora do catálogo cai no núcleo", () => {

@@ -203,7 +203,19 @@ for (const [module, names] of Object.entries(TOOLS_BY_MODULE)) {
 
 // Aliases aceitos em SIENGE_PROFILE para "carregue tudo" e "carregue só o núcleo".
 const ALL_ALIASES = new Set(["all", "tudo", "*", "completo", "full"]);
-const CORE_ALIASES = new Set(["minimo", "mínimo", "lazy", "nucleo", "núcleo", "core"]);
+// Em português e em inglês: o projeto tem nomes nas duas línguas, e quem
+// escreve `minimal` está pedindo a mesma coisa que quem escreve `mínimo`.
+const CORE_ALIASES = new Set([
+  "minimo",
+  "mínimo",
+  "minimal",
+  "min",
+  "minimum",
+  "lazy",
+  "nucleo",
+  "núcleo",
+  "core",
+]);
 
 /**
  * Tags de uma tool. Tool fora do catálogo cai em `nucleo` — sempre visível,
@@ -269,8 +281,15 @@ export function parseProfile(raw) {
       `Válidos: ${Object.keys(MODULES).sort().join(", ")}.`
   );
   if (validos.size === 0) {
-    avisos.push("SIENGE_PROFILE: nenhum módulo válido — carregando todas as tools.");
-    return { modulos: null, avisos };
+    // Cai no padrão, não em "tudo". Um valor não reconhecido é quase sempre
+    // erro de digitação de quem queria restringir — abrir o catálogo inteiro
+    // daria a esse engano mais acesso e mais custo do que não ter configurado
+    // nada, que é falhar na direção errada.
+    avisos.push(
+      "SIENGE_PROFILE: nenhum módulo válido — subindo apenas com o núcleo, " +
+        "que é o padrão. Use 'all' para carregar tudo."
+    );
+    return { modulos: new Set([CORE_MODULE]), avisos };
   }
   return { modulos: new Set([...validos, CORE_MODULE]), avisos };
 }

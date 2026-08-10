@@ -87,7 +87,7 @@ chamada na API.
 | `SIENGE_SUBDOMAIN` | ✅ | subdomínio da empresa; compõe a URL de toda chamada |
 | `SIENGE_API_KEY` | uma das duas | Bearer Token |
 | `SIENGE_USERNAME` + `SIENGE_PASSWORD` | uma das duas | Basic Auth |
-| `SIENGE_PROFILE` | — | recorte inicial. **Vazio = só o núcleo** (padrão); `all` carrega tudo; ou fixe: `compras,financeiro` |
+| `SIENGE_PROFILE` | — | recorte inicial. **Vazio = só o núcleo** (padrão); `all` carrega tudo; ou fixe os módulos: `compras,financeiro`. Valor não reconhecido cai no padrão |
 | `SIENGE_DEEP_MODE` | — | acesso direto aos endpoints. **Desligado por padrão, e a instalação normal não precisa dele** |
 | `SIENGE_MCP_API_PACKAGE` | — | pacote contratado, para calcular o saldo diário de cota |
 | `SIENGE_MCP_LICENSE_KEY` | — | licença; sem ela o servidor funciona e avisa uma vez por sessão |
@@ -154,6 +154,12 @@ conversa que toca um assunto só.
 
 Para uma operação que sempre usa os mesmos módulos, `SIENGE_PROFILE=compras`
 deixa o recorte pronto na subida, sem depender do carregamento dinâmico.
+
+`SIENGE_PROFILE` não é obrigatório: sem ele o servidor já sobe no mínimo.
+`minimo`, `minimal`, `min`, `core` e `nucleo` são sinônimos desse padrão, e um
+valor não reconhecido também cai nele — restringir por engano é preferível a
+abrir o catálogo inteiro por causa de um typo. Para carregar tudo, é preciso
+dizer `all` explicitamente.
 
 ## Estado
 
