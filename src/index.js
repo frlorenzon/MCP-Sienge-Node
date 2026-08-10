@@ -11,8 +11,9 @@
  * para stderr e para o arquivo de log.
  */
 
-import { realpathSync } from "node:fs";
-import { pathToFileURL } from "node:url";
+import fs, { realpathSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 
@@ -27,13 +28,27 @@ import { getLogger } from "./utils/logger.js";
 
 const logger = getLogger();
 
+/**
+ * Versão do package.json, não uma constante à parte.
+ *
+ * O `initialize` do MCP devolve esta versão ao cliente, e duas fontes de
+ * verdade divergem no primeiro `npm version` que alguém rodar — foi o que
+ * aconteceu: a 0.2.0 empacotada se anunciava como 0.1.0.
+ */
+const { version: VERSAO } = JSON.parse(
+  fs.readFileSync(
+    path.join(path.dirname(fileURLToPath(import.meta.url)), "../package.json"),
+    "utf8"
+  )
+);
+
 export function buildServer() {
   const { modulos: perfilModulos, avisos } = tagRegistry.parseProfile(process.env.SIENGE_PROFILE);
   for (const aviso of avisos) logger.warn(aviso);
 
   const server = new McpServer({
     name: "Sienge API Integration 🏗️ - Node",
-    version: "0.1.0",
+    version: VERSAO,
   });
 
   registrarNucleo(server);

@@ -127,3 +127,13 @@ test("stdout carrega só JSON-RPC — nenhum log vaza no canal do protocolo", as
   // O diagnóstico continua existindo — só que no lugar certo.
   assert.ok(stderr.length >= 0);
 });
+
+test("a versão anunciada no initialize é a do package.json", async () => {
+  // Duas fontes de verdade divergem no primeiro `npm version` que alguém
+  // rodar: a 0.2.0 chegou a ser empacotada anunciando-se como 0.1.0.
+  const { readFileSync } = await import("node:fs");
+  const { version } = JSON.parse(readFileSync(path.join(raiz, "package.json"), "utf8"));
+  const { mensagens } = await conversarComServidor("node", [entrada]);
+  const init = mensagens.find((m) => m.id === 1);
+  assert.equal(init.result.serverInfo.version, version);
+});
