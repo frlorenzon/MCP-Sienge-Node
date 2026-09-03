@@ -2,107 +2,320 @@
  * SPDX-FileCopyrightText: © 2026 Felipe Ribeiro Lorenzon
  * SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
  *
- * O processo de compras do Sienge, descrito para o modelo.
+ * O processo de compras do Sienge, descrito para o assistente.
  *
- * Não chama a API: é conhecimento de domínio, e é o que evita os erros mais
- * caros — procurar preço numa solicitação de compra (que não tem preço) ou
- * supor que todo pedido nasceu de uma solicitação.
+ * Este módulo não chama a API. Ele existe porque as tools, isoladas, não
+ * contam a ordem em que as coisas acontecem — e um assistente que não conhece
+ * o processo erra de formas específicas e previsíveis: procura preço numa
+ * solicitação (que não tem preço), supõe que todo pedido nasce de uma
+ * solicitação, ou trata a aprovação como consequência automática do cadastro.
  *
- * ⚠️ O conteúdo de `purchaseProcess.json` descreve o processo **e** cita as
- * tools que o atendem. As duas coisas envelhecem em ritmos diferentes: o
- * processo do ERP é estável, a lista de tools muda a cada versão deste
- * servidor. Citar uma tool que não existe é pior do que não citar nenhuma —
- * o modelo sai procurando, não acha, e insiste, porque foi o próprio servidor
- * que a prometeu.
+ * O conteúdo é conhecimento de negócio informado pelo operador do ERP,
+ * complementado pelo que as especificações publicadas confirmam. Onde algo não
+ * foi verificado, está marcado como tal — ver LIMITACOES.
  *
- * Por isso a lista de tools de cada etapa é filtrada em tempo de execução
- * contra o que está de fato registrado, e a cobertura é recalculada a partir
- * disso. O texto do processo passa intacto.
+ * `cobertura_mcp` descreve ESTE servidor, o Node, e não a versão Python: a
+ * maior parte das etapas ainda não tem tool aqui. Manter isso honesto é o que
+ * impede o assistente de prometer uma ação que não consegue executar.
  */
 
-import fs from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
+// %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+// ETAPAS
+// %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-const aqui = path.dirname(fileURLToPath(import.meta.url));
+export const ETAPAS = [
+  {
+    etapa: 1,
+    nome: "Solicitação de Compra",
+    api: "purchase-requests-v1",
+    o_que_e:
+      "Alguém pede um insumo ou serviço. Registra o que se precisa e quanto, " +
+      "não quanto custa.",
+    atencao:
+      "NÃO existe preço nesta etapa, porque ainda não houve cotação. Há apenas " +
+      "quantidade e unidade de medida. Se o usuário pedir valores de uma " +
+      "solicitação, explique que o preço só aparece a partir da cotação ou do " +
+      "pedido. O campo estimatedPrice, quando preenchido, é estimativa do " +
+      "solicitante — não é preço negociado.",
+    tools: ["compras_criar_solicitacao"],
+    por_onde_comecar:
+      "compras_criar_solicitacao cria a solicitação a partir de NOMES: obra, " +
+      "insumo, detalhe do insumo e itens de orçamento da apropriação. Ela " +
+      "resolve todos os códigos internamente — não peça ids ao usuário. Sem " +
+      "confirmar:true devolve só a prévia, sem gravar. Insumo e detalhe são " +
+      "coisas distintas: 'tubo de esgoto' é o insumo e '2\"' é o detalhe dele.",
+    cobertura_mcp: "parcial",
+    observacao_cobertura:
+      "Criar está coberto. CONSULTAR solicitação existente não: " +
+      "buscarSolicitacao e buscarItensDeSolicitacoes existem em " +
+      "api/purchase-requests-v1.js mas não são tool — para ver solicitações, " +
+      "hoje só a fila da etapa 2. " +
+      "A criação NÃO é atômica: a API grava cabeçalho e itens em dois POSTs, e " +
+      "se o segundo falhar sobra uma solicitação sem itens, que só se resolve " +
+      "pela tela — não há DELETE de solicitação.",
+  },
+  {
+    etapa: 2,
+    nome: "Aprovação da Solicitação",
+    api: "purchase-requests-v1",
+    o_que_e: "A solicitação é autorizada, item a item ou inteira.",
+    atencao:
+      "É um passo próprio e explícito: cadastrar uma solicitação não a aprova. " +
+      "A API permite aprovar a solicitação inteira, um subconjunto de itens ou " +
+      "um item isolado, e também reprovar. Como a aprovação é item a item, uma " +
+      "solicitação pode estar parcialmente aprovada — não trate 'aprovada' como " +
+      "estado único da solicitação.",
+    tools: ["compras_solicitacoes_para_aprovacao"],
+    por_onde_comecar:
+      "compras_solicitacoes_para_aprovacao monta a fila: solicitações com ao " +
+      "menos um item pendente, agrupadas, com obra e solicitante resolvidos e " +
+      "as mais antigas primeiro. Ela só CONSULTA — a decisão é do usuário.",
+    cobertura_mcp: "parcial",
+    observacao_cobertura:
+      "Só a fila está exposta como tool. autorizarSolicitacao, autorizarItens, " +
+      "autorizarItem, reprovarSolicitacao e reprovarItem existem em " +
+      "api/purchase-requests-v1.js mas ainda não são tool — aprovar e reprovar " +
+      "é pelo ERP.",
+  },
+  {
+    etapa: 3,
+    nome: "Cotação de Preços",
+    api: "purchase-quotations-v1",
+    o_que_e:
+      "A solicitação vai a mercado: fornecedores são consultados, negociações " +
+      "são registradas e comparadas. É aqui que o preço entra no processo.",
+    atencao:
+      "ETAPA OPCIONAL — pode ser pulada. Não presuma que todo pedido passou por " +
+      "cotação.",
+    tools: [],
+    cobertura_mcp: "ausente",
+  },
+  {
+    etapa: 4,
+    nome: "Pedido de Compra",
+    api: "purchase-orders-v1",
+    o_que_e:
+      "A ordem da empresa para que um fornecedor fature um produto ou serviço. " +
+      "Aqui existem preço, fornecedor e condições.",
+    atencao:
+      "Pode nascer de uma solicitação, de uma cotação, ou de nada — ver " +
+      "sequencias. Não suponha que exista uma solicitação por trás.",
+    tools: ["compras_pedidos_para_aprovacao"],
+    por_onde_comecar:
+      "Para listar ou analisar pedidos pendentes, use " +
+      "compras_pedidos_para_aprovacao: ela traz pedido, itens e fornecedor " +
+      "resolvidos numa chamada só. A limitação dela é a janela — o pedido " +
+      "precisa estar entre os 100 últimos.",
+    cobertura_mcp: "parcial",
+    observacao_cobertura:
+      "Só a fila de pendentes de aprovação está exposta como tool. " +
+      "Apropriações de obra, previsões de entrega, anexos e item avulso " +
+      "existem em api/purchase-orders-v1.js mas ainda não viraram tool.",
+  },
+  {
+    etapa: 5,
+    nome: "Aprovação do Pedido de Compra",
+    api: "purchase-orders-v1",
+    o_que_e: "O pedido é autorizado e passa a valer como compromisso de compra.",
+    atencao:
+      "Assume compromisso financeiro. Analisar não é aprovar: " +
+      "compras_pedidos_para_aprovacao apenas monta a fila, e a decisão sobre " +
+      "cada pedido é do usuário. É também o gatilho da notificação ao " +
+      "fornecedor dentro do ERP — ver limitacoes.",
+    tools: [],
+    cobertura_mcp: "ausente",
+    observacao_cobertura:
+      "NÃO há tool de aprovação neste servidor. As funções autorizarPedido e " +
+      "reprovarPedido existem em api/purchase-orders-v1.js, mas não estão " +
+      "publicadas como tool — o assistente não consegue aprovar nem reprovar. " +
+      "Diga isso ao usuário em vez de tentar; a aprovação é pelo ERP.",
+  },
+  {
+    etapa: 6,
+    nome: "Entrada da Nota Fiscal",
+    api: "purchase-invoices-v1",
+    o_que_e:
+      "O insumo chega. Alguém confere fisicamente a quantidade e a qualidade " +
+      "dos itens recebidos, verifica se a nota fiscal está em conformidade com " +
+      "o pedido de compra e, se estiver tudo correto, lança a nota no sistema.",
+    atencao:
+      "A CONFERÊNCIA É FÍSICA e acontece FORA do sistema. É a única etapa do " +
+      "processo que o assistente não tem como executar nem verificar: só quem " +
+      "está no recebimento sabe se a mercadoria chegou certa. NUNCA trate uma " +
+      "nota como lançável presumindo que a conferência foi feita. " +
+      "Lançar a nota é também o ponto em que a compra vira dívida: o Sienge " +
+      "gera automaticamente o título no contas a pagar. Divergência entre nota " +
+      "e pedido (quantidade, preço, fornecedor) INTERROMPE o processo e volta " +
+      "para tratativa humana — não ajuste os números para fazer fechar.",
+    como_vincular_a_nota_ao_pedido: {
+      resumo:
+        "O cabeçalho da nota NÃO referencia o pedido — não há campo para isso. " +
+        "O vínculo é feito item a item, e na granularidade da ENTREGA PREVISTA: " +
+        "item da nota ↔ entrega prevista de um item de um pedido.",
+      campos_por_linha: {
+        purchaseOrderId: "qual pedido",
+        itemNumber: "qual item daquele pedido",
+        deliveryScheduleNumber: "qual entrega prevista daquele item",
+        deliveredQuantity: "quanto desta entrega a nota cobre",
+      },
+      onde:
+        "POST /purchase-invoices/{sequentialNumber}/items/purchase-orders" +
+        "/delivery-schedules — nunca no POST do cabeçalho.",
+      como_descobrir: [
+        "itemNumber vem de GET /purchase-orders/{id}/items",
+        "deliveryScheduleNumber vem de " +
+          "GET /purchase-orders/{id}/items/{itemNumber}/delivery-schedules",
+        "openQuantity, nessa mesma consulta, mostra o saldo ainda não faturado",
+      ],
+      observacoes: [
+        "Uma nota pode atender entregas de VÁRIOS pedidos: deliveriesOrder é " +
+          "uma lista e cada linha traz seu próprio purchaseOrderId.",
+        "Um item de pedido pode ser entregue em partes, cada parte numa nota " +
+          "diferente; deliveredQuantity permite atender uma entrega parcialmente.",
+        "keepBalance decide se o saldo restante do pedido segue aberto.",
+        "Depois de criada, ler os itens da nota NÃO devolve o pedido de origem. " +
+          "Para o caminho inverso existe GET /purchase-orders/{id}/deliveries-attended.",
+        "O preço não é informado no lançamento: vem do item do pedido.",
+      ],
+    },
+    tools: ["compras_pedidos_pendentes_recebimento"],
+    por_onde_comecar:
+      "compras_pedidos_pendentes_recebimento mostra o que já foi aprovado e " +
+      "ainda não chegou — é a visão de saldo em aberto, não o lançamento. " +
+      "Ela exige obra ou fornecedor por NOME.",
+    cobertura_mcp: "parcial",
+    observacao_cobertura:
+      "Só a consulta de pendências está exposta. NÃO existe tool que lance " +
+      "nota fiscal neste servidor; o lançamento é pelo ERP.",
+  },
+];
 
-const CONHECIMENTO = JSON.parse(
-  fs.readFileSync(path.join(aqui, "purchaseProcess.json"), "utf8")
-);
+// %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+// COMO AS ETAPAS SE ENCADEIAM NO TEMPO
+// %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-/**
- * Recorta uma etapa para o que este servidor realmente oferece.
- *
- * `cobertura_mcp` deixa de ser um rótulo fixo herdado e passa a dizer a
- * verdade sobre a etapa: quantas das tools previstas existem aqui, e por onde
- * ir quando não existe nenhuma.
- */
-function recortarEtapa(etapa, visiveis, registradas, comoCarregar) {
-  const previstas = etapa.tools ?? [];
-  // Três destinos possíveis, e a diferença importa: o que se pode chamar
-  // agora, o que existe mas está atrás de um `carregar_<modulo>`, e o que
-  // simplesmente não foi implementado nesta versão.
-  const agora = previstas.filter((t) => visiveis.has(t));
-  const aposCarregar = previstas.filter((t) => !visiveis.has(t) && registradas.has(t));
-  const inexistentes = previstas.filter((t) => !registradas.has(t));
+export const ENCADEAMENTO = {
+  regra:
+    "Cada etapa é executada por uma pessoa diferente, em um momento diferente. " +
+    "O processo é assíncrono e as responsabilidades são segregadas — quem " +
+    "solicita não é quem aprova, quem cota não é quem autoriza o pedido.",
+  consequencias: [
+    "NÃO encadeie etapas automaticamente. Concluir a etapa 1 não autoriza " +
+      "executar a 2. Cada uma é uma decisão de outra pessoa, em outro momento.",
+    "Um registro parado aguardando aprovação é estado NORMAL do processo, não " +
+      "erro nem pendência a ser resolvida pelo assistente. Uma solicitação " +
+      "cadastrada há dias e ainda não aprovada não indica falha.",
+    "Ao concluir uma etapa, informe qual é a próxima e de quem é a vez — não " +
+      "prossiga por conta própria.",
+    "O usuário que conversa com você provavelmente atua em UMA etapa. Não " +
+      "presuma que ele tem alçada para as demais.",
+    "Como há intervalo entre as etapas, dados mudam entre elas. Reconsulte o " +
+      "estado atual antes de agir sobre um registro criado anteriormente, em " +
+      "vez de confiar no que foi lido antes.",
+  ],
+};
 
-  const recortada = { ...etapa, tools: agora };
+// %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+// CAMINHOS VÁLIDOS
+// %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-  if (aposCarregar.length) {
-    recortada.tools_apos_carregar = aposCarregar;
-    const carregadores = [...new Set(aposCarregar.map((t) => comoCarregar.get(t)))].filter(Boolean);
-    if (carregadores.length) {
-      recortada.como_habilitar = `Chame ${carregadores.join(" ou ")} para ter estas.`;
-    }
-  }
+export const SEQUENCIAS = [
+  {
+    sequencia: "1 → 2 → 3 → 4 → 5 → 6",
+    nome: "Fluxo completo",
+    quando:
+      "Compra planejada que passa por cotação de preços. A etapa 6 acontece " +
+      "quando a mercadoria chega, o que pode levar dias ou semanas.",
+  },
+  {
+    sequencia: "1 → 2 → 4 → 5 → 6",
+    nome: "Sem cotação",
+    quando:
+      "A solicitação vira pedido direto, sem ir a mercado — fornecedor já " +
+      "definido, contrato vigente ou valor que não justifica cotar.",
+  },
+  {
+    sequencia: "4 → 5 → 6",
+    nome: "Compra urgente",
+    quando:
+      "Emergência: o pedido é criado direto, sem solicitação e sem cotação. " +
+      "É um caminho legítimo — a ausência de solicitação não indica erro nem " +
+      "dado faltando.",
+  },
+];
 
-  const alcancaveis = agora.length + aposCarregar.length;
+// %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+// LIMITAÇÕES
+// %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-  if (alcancaveis === 0) {
-    recortada.cobertura_mcp = "sem tool dedicada nesta versão";
-    recortada.como_fazer =
-      "Não há tool específica para esta etapa aqui. Consulte a API diretamente " +
-      "com listar_endpoints_api e chamar_api — exigem SIENGE_DEEP_MODE=on " +
-      "na configuração do servidor. Operações de escrita não têm caminho: " +
-      "precisam ser feitas no próprio Sienge.";
-    // `por_onde_comecar` aponta para uma tool que não existe: seguiria mandando
-    // o modelo atrás dela.
-    delete recortada.por_onde_comecar;
-  } else if (inexistentes.length) {
-    recortada.cobertura_mcp = `parcial — ${alcancaveis} de ${previstas.length} tools`;
-  } else {
-    recortada.cobertura_mcp = "completa";
-  }
+export const LIMITACOES = [
+  {
+    assunto: "Envio de e-mail ao fornecedor",
+    situacao:
+      "Nenhuma das APIs de compras publicadas expõe endpoint de envio de " +
+      "e-mail. Dentro do ERP, aprovar o pedido dispara e-mail ao fornecedor e " +
+      "aos destinatários configurados nos parâmetros do centro de custo.",
+    status: "NÃO VERIFICADO",
+    observacao:
+      "Não se sabe se aprovar via API dispara a mesma notificação que aprovar " +
+      "pela tela, já que é o mesmo sistema por trás. Isso é testável: aprove um " +
+      "pedido pela API e confira se o e-mail saiu. Até a confirmação, não " +
+      "afirme ao usuário que o e-mail foi enviado nem que deixou de ser.",
+  },
+  {
+    assunto: "PDF do pedido para envio ao fornecedor",
+    situacao:
+      "Não há endpoint que gere o documento do pedido de compra para envio. " +
+      "Existe GET /purchase-orders/{id}/analysis/pdf, mas ele gera o relatório " +
+      "de ANÁLISE do pedido — documento interno de conferência, não a via do " +
+      "fornecedor.",
+    status: "CONFIRMADO NO SPEC",
+    observacao:
+      "Se o usuário quiser mandar o pedido ao fornecedor, o caminho é o ERP. " +
+      "Não ofereça o analysis/pdf como substituto sem explicar a diferença.",
+  },
+  {
+    assunto: "Cobertura deste servidor MCP",
+    situacao:
+      "Das seis etapas, as etapas 1, 2, 4 e 6 têm tool. A ÚNICA de escrita é a " +
+      "criação de solicitação (etapa 1); as demais são consulta: a fila de " +
+      "solicitações a aprovar, a fila de pedidos a aprovar e os pedidos " +
+      "pendentes de recebimento.",
+    status: "CONFIRMADO NO CÓDIGO",
+    observacao:
+      "O assistente cria solicitação, mas NÃO cota, NÃO aprova e NÃO lança nota " +
+      "fiscal por aqui. Quando o usuário pedir uma dessas ações, diga que o " +
+      "caminho é o ERP em vez de procurar uma tool que não existe.",
+  },
+];
 
-  return recortada;
-}
+export const ERROS_COMUNS = [
+  "Procurar preço em solicitação de compra — nesta etapa só há quantidade e unidade.",
+  "Supor que todo pedido de compra veio de uma solicitação; compras urgentes começam no pedido.",
+  "Tratar cadastro como aprovação; aprovar é sempre um passo separado e explícito.",
+  "Afirmar que a aprovação via API enviou e-mail ao fornecedor — isso não foi verificado.",
+  "Oferecer o relatório de análise como se fosse a via do pedido para o fornecedor.",
+  "Encadear etapas sozinho: cada uma é decisão de outra pessoa, em outro momento.",
+  "Tratar registro aguardando aprovação como problema — é estado normal do processo.",
+  "Tratar nota fiscal como lançável sem confirmar que a conferência física foi feita.",
+  "Ajustar quantidade ou preço da nota para 'fechar' com o pedido; divergência para o processo.",
+  "Prometer uma ação de escrita: este servidor só consulta compras — ver limitacoes.",
+];
 
-/**
- * @param {{visiveis: Set<string>, registradas: Set<string>, comoCarregar?: Map<string,string>}} [estado]
- *   `visiveis` são as tools chamáveis agora; `registradas` inclui as que estão
- *   atrás de um `carregar_<modulo>`. Sem o argumento devolve o conhecimento
- *   cru — útil para inspecionar a especificação, não para responder ao modelo.
- */
-export async function describePurchaseProcess(estado = null) {
-  if (!estado) return CONHECIMENTO;
-
-  const { visiveis, registradas = visiveis, comoCarregar = new Map() } = estado;
-
-  const etapas = (CONHECIMENTO.etapas ?? []).map((e) =>
-    recortarEtapa(e, visiveis, registradas, comoCarregar)
-  );
-  const cobertas = etapas.filter(
-    (e) => e.tools.length > 0 || e.tools_apos_carregar?.length
-  ).length;
-
+/** Devolve o processo de compras do Sienge: etapas, caminhos válidos e limitações. */
+export async function descreverProcessoDeCompras() {
   return {
-    ...CONHECIMENTO,
-    etapas,
-    aviso_de_cobertura:
-      `Esta versão do servidor tem tools para ${cobertas} das ${etapas.length} ` +
-      "etapas. As demais só são alcançáveis pela API direta (chamar_api, " +
-      "que exige SIENGE_DEEP_MODE=on na configuração) ou pelo próprio Sienge. " +
-      "As listas de `tools` abaixo já refletem o que existe — não procure por " +
-      "nomes que não estejam nelas.",
+    success: true,
+    resumo:
+      "Compras no Sienge percorrem até seis etapas: solicitação, aprovação da " +
+      "solicitação, cotação (opcional), pedido de compra, aprovação do pedido e " +
+      "entrada da nota fiscal quando a mercadoria chega. " +
+      "Nem toda compra passa por todas — ver sequencias. Cada etapa é feita por " +
+      "uma pessoa diferente, em momento diferente — ver encadeamento.",
+    etapas: ETAPAS,
+    encadeamento: ENCADEAMENTO,
+    sequencias: SEQUENCIAS,
+    limitacoes: LIMITACOES,
+    erros_comuns: ERROS_COMUNS,
   };
 }
