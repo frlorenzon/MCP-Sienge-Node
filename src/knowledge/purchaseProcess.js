@@ -129,17 +129,23 @@ export const ETAPAS = [
     api: "purchase-orders-v1",
     o_que_e: "O pedido é autorizado e passa a valer como compromisso de compra.",
     atencao:
-      "Assume compromisso financeiro. Analisar não é aprovar: " +
-      "compras_pedidos_para_aprovacao apenas monta a fila, e a decisão sobre " +
-      "cada pedido é do usuário. É também o gatilho da notificação ao " +
-      "fornecedor dentro do ERP — ver limitacoes.",
-    tools: [],
-    cobertura_mcp: "ausente",
+      "Assume compromisso financeiro: aprovar é fechar a compra com o preço e " +
+      "a condição acertados, não liberar uma necessidade interna. A decisão é " +
+      "sempre do usuário — compras_pedidos_para_aprovacao apenas monta a fila. " +
+      "Na TELA do ERP, aprovar também dispara os e-mails parametrizados; pela " +
+      "API isso NÃO acontece — ver limitacoes, é o ponto mais importante " +
+      "desta etapa.",
+    tools: ["compras_pedidos_para_aprovacao", "compras_decidir_pedidos"],
+    por_onde_comecar:
+      "compras_decidir_pedidos chamada SEM 'pedidos' devolve a fila; com " +
+      "'pedidos' e sem confirmar devolve a prévia com valor e fornecedor; só " +
+      "com confirmar: true grava. Aprovação e reprovação são IRREVERSÍVEIS.",
+    cobertura_mcp: "completa",
     observacao_cobertura:
-      "NÃO há tool de aprovação neste servidor. As funções autorizarPedido e " +
-      "reprovarPedido existem em api/purchase-orders-v1.js, mas não estão " +
-      "publicadas como tool — o assistente não consegue aprovar nem reprovar. " +
-      "Diga isso ao usuário em vez de tentar; a aprovação é pelo ERP.",
+      "Aprovar e reprovar estão expostos em compras_decidir_pedidos. A fila " +
+      "enxerga só os 100 últimos pedidos: um pedido antigo pode estar " +
+      "pendente sem aparecer nela, e nesse caso o caminho é o ERP. " +
+      "APROVAR AQUI NÃO ENVIA E-MAIL — diga isso ao usuário toda vez.",
   },
   {
     etapa: 6,
@@ -261,17 +267,22 @@ export const SEQUENCIAS = [
 
 export const LIMITACOES = [
   {
-    assunto: "Envio de e-mail ao fornecedor",
+    assunto: "Aprovar pedido pela API não envia e-mail — BUG DE PARIDADE",
     situacao:
-      "Nenhuma das APIs de compras publicadas expõe endpoint de envio de " +
-      "e-mail. Dentro do ERP, aprovar o pedido dispara e-mail ao fornecedor e " +
-      "aos destinatários configurados nos parâmetros do centro de custo.",
-    status: "NÃO VERIFICADO",
+      "Na TELA do Sienge, aprovar um pedido de compra dispara os envios " +
+      "parametrizados: a via do pedido ao FORNECEDOR, o aviso ao USUÁRIO do " +
+      "Sienge e o relatório do pedido à OBRA. Pelo endpoint de autorização, " +
+      "NENHUM desses e-mails sai. O pedido é apenas marcado como autorizado.",
+    status: "CONFIRMADO CONTRA O ERP DE PRODUÇÃO",
     observacao:
-      "Não se sabe se aprovar via API dispara a mesma notificação que aprovar " +
-      "pela tela, já que é o mesmo sistema por trás. Isso é testável: aprove um " +
-      "pedido pela API e confira se o e-mail saiu. Até a confirmação, não " +
-      "afirme ao usuário que o e-mail foi enviado nem que deixou de ser.",
+      "Não é parametrização faltando: acontece com o envio automático " +
+      "configurado e ligado no sistema. É o endpoint que não executa o " +
+      "gatilho que a tela executa — divergência do Sienge, não limitação " +
+      "deste servidor, e não há o que ajustar na configuração para corrigir. " +
+      "Consequência: o pedido fica aprovado e ninguém é avisado, então a " +
+      "compra pode ficar parada esperando um e-mail que nunca foi enviado. " +
+      "AVISE O USUÁRIO EM TODA APROVAÇÃO feita por compras_decidir_pedidos e " +
+      "combine o envio por fora, pelo ERP ou por e-mail direto.",
   },
   {
     assunto: "PDF do pedido para envio ao fornecedor",
@@ -288,17 +299,16 @@ export const LIMITACOES = [
   {
     assunto: "Cobertura deste servidor MCP",
     situacao:
-      "Das seis etapas, as etapas 1, 2, 4 e 6 têm tool. As de ESCRITA são duas, " +
-      "ambas na solicitação: criar (etapa 1) e decidir, aprovando ou reprovando " +
-      "(etapa 2). As demais são consulta: a fila de pedidos a aprovar e os " +
-      "pedidos pendentes de recebimento. Cotar, aprovar pedido e lançar nota " +
-      "fiscal são pelo ERP.",
+      "Das seis etapas, as etapas 1, 2, 4, 5 e 6 têm tool. As de ESCRITA são " +
+      "três: criar solicitação (etapa 1), decidir solicitação (etapa 2) e " +
+      "decidir pedido de compra (etapa 5) — as três aprovando ou reprovando " +
+      "conforme o caso. As demais são consulta. Cotar (etapa 3) e lançar nota " +
+      "fiscal (etapa 6) são pelo ERP.",
     status: "CONFIRMADO NO CÓDIGO",
     observacao:
-      "O assistente cria, aprova e reprova solicitação, mas NÃO cota, NÃO aprova " +
-      "pedido e NÃO lança nota fiscal por aqui. Quando o usuário pedir uma " +
-      "dessas ações, diga que o caminho é o ERP em vez de procurar uma tool que " +
-      "não existe.",
+      "O assistente cria e decide solicitação e decide pedido, mas NÃO cota e " +
+      "NÃO lança nota fiscal por aqui. Quando o usuário pedir uma dessas duas, " +
+      "diga que o caminho é o ERP em vez de procurar uma tool que não existe.",
   },
 ];
 
@@ -306,13 +316,14 @@ export const ERROS_COMUNS = [
   "Procurar preço em solicitação de compra — nesta etapa só há quantidade e unidade.",
   "Supor que todo pedido de compra veio de uma solicitação; compras urgentes começam no pedido.",
   "Tratar cadastro como aprovação; aprovar é sempre um passo separado e explícito.",
-  "Afirmar que a aprovação via API enviou e-mail ao fornecedor — isso não foi verificado.",
+  "Afirmar que aprovar o pedido pela API avisou alguém: NENHUM e-mail sai, nem ao "
+    + "fornecedor, nem ao usuário, nem à obra — mesmo parametrizado. Ver limitacoes.",
   "Oferecer o relatório de análise como se fosse a via do pedido para o fornecedor.",
   "Encadear etapas sozinho: cada uma é decisão de outra pessoa, em outro momento.",
   "Tratar registro aguardando aprovação como problema — é estado normal do processo.",
   "Tratar nota fiscal como lançável sem confirmar que a conferência física foi feita.",
   "Ajustar quantidade ou preço da nota para 'fechar' com o pedido; divergência para o processo.",
-  "Prometer uma ação de escrita: este servidor só consulta compras — ver limitacoes.",
+  "Prometer cotação ou lançamento de nota fiscal: essas duas não têm tool — ver limitacoes.",
 ];
 
 /** Devolve o processo de compras do Sienge: etapas, caminhos válidos e limitações. */

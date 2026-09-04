@@ -15,6 +15,7 @@ import {
   listarSolicitacoesParaAprovacao,
   criarSolicitacaoDeCompra,
   decidirSolicitacoesDeCompra,
+  decidirPedidosDeCompra,
 } from "../client/purchaseClient.js";
 import { descreverProcessoDeCompras } from "../knowledge/purchaseProcess.js";
 
@@ -198,6 +199,55 @@ export const purchaseModule = {
       inputSchema: { type: "object", properties: {} },
     },
     {
+      // O aviso do e-mail vive na descrição, não só na resposta: se o modelo
+      // souber disso ANTES de propor a aprovação, ele combina o envio junto —
+      // em vez de descobrir depois de gravar, quando o fornecedor já ficou sem
+      // a via.
+      name: "compras_decidir_pedidos",
+      description:
+        "APROVA ou REPROVA PEDIDOS de compra (etapa 5) — escolha em `decisao`. Pedido é a " +
+        "ordem ao FORNECEDOR, com preço e compromisso financeiro; para a solicitação " +
+        "interna sem preço, a tool é compras_decidir_solicitacoes. Aceita vários pedidos " +
+        "na mesma chamada. Chamada SEM `pedidos`, devolve a fila — use isso para mostrar " +
+        "valor e fornecedor ao usuário antes de qualquer decisão. Só decide o que a fila " +
+        "mostra como pendente, e ela enxerga apenas os 100 últimos pedidos: id ausente " +
+        "pode estar pendente fora da janela, não afirme que já foi decidido. Sem " +
+        "confirmar: true devolve a prévia, sem gravar. AS DUAS DECISÕES SÃO IRREVERSÍVEIS. " +
+        "ATENÇÃO — BUG DO SIENGE: aprovar por esta API NÃO dispara e-mail nenhum (nem ao " +
+        "fornecedor, nem ao usuário, nem à obra), mesmo com o envio automático " +
+        "parametrizado no ERP; a tela envia, o endpoint não. Avise o usuário em TODA " +
+        "aprovação e combine o envio por fora.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          pedidos: {
+            type: "array",
+            description: "o que decidir; omita para apenas listar a fila de pendentes",
+            items: {
+              type: "object",
+              properties: {
+                id: { type: "number", description: "id do pedido de compra" },
+                observacao: {
+                  type: "string",
+                  description: "observação gravada junto da decisão (até 300 caracteres)",
+                },
+              },
+              required: ["id"],
+            },
+          },
+          decisao: {
+            type: "string",
+            enum: ["aprovar", "reprovar"],
+            description: "aprovar (padrão) ou reprovar",
+          },
+          confirmar: {
+            type: "boolean",
+            description: "false (padrão) devolve a prévia; true grava no Sienge",
+          },
+        },
+      },
+    },
+    {
       name: "compras_pedidos_pendentes_recebimento",
       description:
         "Lista os pedidos de compra já aprovados que ainda faltam ser entregues " +
@@ -226,6 +276,7 @@ export const purchaseModule = {
     compras_solicitacoes_para_aprovacao: listarSolicitacoesParaAprovacao,
     compras_decidir_solicitacoes: decidirSolicitacoesDeCompra,
     compras_pedidos_para_aprovacao: listarPedidosParaAprovacao,
+    compras_decidir_pedidos: decidirPedidosDeCompra,
     compras_pedidos_pendentes_recebimento: listarPedidosPendentesRecebimento,
   },
 };

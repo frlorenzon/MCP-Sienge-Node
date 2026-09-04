@@ -7,7 +7,12 @@
  * o que uma tool de negócio precisa, numa chamada só.
  */
 
-import { buscarPedidos, buscarItens } from "../api/purchase-orders-v1.js";
+import {
+  buscarPedidos,
+  buscarItens,
+  autorizarPedido,
+  reprovarPedido,
+} from "../api/purchase-orders-v1.js";
 import {
   buscarItensDeSolicitacoes,
   buscarSolicitacao,
@@ -1580,6 +1585,347 @@ export async function decidirSolicitacoesDeCompra({
         ? "Aprovada a solicitação, a próxima etapa é a cotação (opcional) ou o pedido de " +
           "compra — e é decisão de outra pessoa, em outro momento."
         : "Reprovado o item, quem solicitou precisa saber: a obra segue sem o insumo até " +
+          "que alguém decida outra coisa.",
+    previa,
+  };
+}
+
+// =========================================================
+// APROVAÇÃO DE PEDIDO DE COMPRA (ETAPA 5 DO PROCESSO)
+// =========================================================
+
+/**
+ * BUG DE PARIDADE DO SIENGE — verificado contra o ERP de produção.
+ *
+ * Na tela, aprovar um pedido dispara os e-mails configurados nos parâmetros:
+ * a via do pedido ao FORNECEDOR, o aviso ao USUÁRIO do Sienge e o relatório à
+ * OBRA. Pelo endpoint, NADA disso sai. Ele só marca o pedido como autorizado,
+ * mesmo com a parametrização de envio automático ligada no sistema.
+ *
+ * Não é configuração faltando: é o endpoint que não executa o gatilho que a
+ * tela executa. Aprovar por aqui, portanto, aprova pela metade — a decisão
+ * fica gravada e ninguém é avisado.
+ *
+ * Por isso o aviso viaja em TODA resposta desta tool, inclusive na prévia e no
+ * sucesso. Um aviso só na documentação não chega a quem lê a resposta, e o
+ * silêncio aqui é caro: o fornecedor não recebe a via e a compra fica parada
+ * esperando um e-mail que nunca foi enviado.
+ */
+const EMAIL_NAO_SAI = {
+  o_que_acontece:
+    "Aprovar por esta API NÃO envia e-mail nenhum: nem a via do pedido ao " +
+    "fornecedor, nem o aviso ao usuário do Sienge, nem o relatório à obra.",
+  mesmo_que:
+    "O envio automático esteja parametrizado e ligado no Sienge. A tela " +
+    "dispara os e-mails; o endpoint não faz o mesmo. É um BUG DE PARIDADE DO " +
+    "SIENGE entre a tela e a API — não é configuração faltando, não é " +
+    "limitação deste servidor MCP e não há ajuste no ERP que corrija. " +
+    "Diga isso ao usuário com essas palavras: a falha é do ERP.",
+  consequencia:
+    "O pedido fica autorizado e ninguém é notificado. O fornecedor não " +
+    "recebe a via e a compra pode ficar parada esperando um e-mail que não " +
+    "saiu.",
+  o_que_fazer:
+    "AVISE O USUÁRIO em toda aprovação e combine o envio por fora — pelo " +
+    "ERP ou por e-mail direto. Não trate o pedido como comunicado ao " +
+    "fornecedor só porque foi aprovado.",
+};
+
+/**
+ * Convite para abrir chamado — só depois de uma aprovação GRAVADA.
+ *
+ * O chamado já aberto foi classificado pela Starian como MELHORIA, categoria
+ * que não tem prazo nem garantia de execução. Um relato isolado dificilmente
+ * muda essa classificação; vários clientes descrevendo o mesmo DEFEITO têm
+ * chance real de mudar.
+ *
+ * Por que na resposta da aprovação e não na prévia: é o único momento em que a
+ * pessoa tem o caso concreto na mão — o pedido que acabou de aprovar e o
+ * fornecedor que não foi avisado. Perguntar antes disso, ou na listagem, seria
+ * ruído em cima de quem ainda não foi atingido pelo problema.
+ */
+const CONVITE_DE_CHAMADO = {
+  por_que_importa:
+    "Já existe chamado aberto na Starian sobre este bug, e ele foi " +
+    "classificado como MELHORIA — categoria sem prazo e sem garantia de que " +
+    "será feita. Reclassificar para DEFEITO depende de volume: quanto mais " +
+    "clientes relatarem, maior a chance de correção.",
+  o_que_fazer:
+    "AO FINAL da resposta, depois de resolver o envio ao fornecedor, " +
+    "PERGUNTE ao usuário se ele quer ajuda para abrir esse chamado na " +
+    "Starian. Se aceitar, redija o texto argumentando que é DEFEITO e não " +
+    "melhoria: a funcionalidade existe e está parametrizada no produto, e a " +
+    "API ignora silenciosamente essa parametrização. Não é recurso novo " +
+    "sendo pedido. Pergunte uma vez, sem insistir se a pessoa não quiser.",
+};
+
+/**
+ * As duas decisões possíveis sobre um pedido pendente.
+ *
+ * Sem a assimetria de lote que existe na solicitação: aqui as duas operações
+ * são um PUT/PATCH por pedido, então reprovar não custa mais chamadas que
+ * aprovar. O aviso de e-mail vale só para a aprovação — reprovar não tem
+ * gatilho de notificação na tela para deixar de disparar.
+ */
+const DECISOES_DE_PEDIDO = {
+  aprovar: { participio: "aprovado", acao: "aprovação", executar: autorizarPedido },
+  reprovar: { participio: "reprovado", acao: "reprovação", executar: reprovarPedido },
+};
+
+/**
+ * Cache curto da fila de pedidos, pelo mesmo motivo do cache da etapa 2: o
+ * percurso normal é ver a fila e decidir em seguida. A PRÉVIA sai daqui; a
+ * EXECUÇÃO relê sempre, porque entre olhar e decidir outra pessoa pode ter
+ * aprovado o mesmo pedido — e a API não desfaz.
+ *
+ * Montar esta fila é mais caro que a da solicitação: cada pedido custa três
+ * chamadas extras (itens, fornecedor, obra), então revarrer à toa pesa mais.
+ */
+const TTL_FILA_PEDIDOS_MS = 15 * 60 * 1000;
+let filaDePedidosEmCache = null;
+
+async function filaDePedidos({ fresca = false } = {}) {
+  const agora = Date.now();
+  if (!fresca && filaDePedidosEmCache && agora - filaDePedidosEmCache.em < TTL_FILA_PEDIDOS_MS) {
+    return { ...filaDePedidosEmCache.valor, do_cache: true };
+  }
+
+  const fila = await listarPedidosParaAprovacao();
+  if (fila.success) filaDePedidosEmCache = { em: agora, valor: fila };
+  return fila;
+}
+
+/**
+ * Confere os pedidos pedidos contra a fila real.
+ *
+ * Mesma regra da etapa 2: só se decide o que o ERP mostra como pendente. Um id
+ * ausente da fila pode já ter sido decidido, ter sido cancelado, ou estar fora
+ * da janela dos 100 últimos pedidos — e essa terceira hipótese é específica
+ * daqui, porque `listarPedidosParaAprovacao` não pagina. A mensagem precisa
+ * dizer isso, senão "não está pendente" vira uma afirmação falsa sobre um
+ * pedido antigo que está pendente sim.
+ */
+function conferirPedidosContraAFila(pedidos, fila) {
+  const porId = new Map(fila.purchaseOrders.map((p) => [String(p.id), p]));
+  const alvos = [];
+  const pendencias = [];
+  const vistos = new Set();
+
+  for (const [indice, pedido] of pedidos.entries()) {
+    const campo = `pedidos[${indice}]`;
+    const id = typeof pedido === "object" && pedido !== null ? pedido.id : pedido;
+
+    if (id === undefined || id === null || id === "") {
+      pendencias.push({
+        campo: `${campo}.id`,
+        tipo: "Faltando",
+        message: "Informe o id do pedido de compra.",
+      });
+      continue;
+    }
+
+    // Id repetido na mesma chamada gravaria duas vezes o mesmo pedido — a
+    // segunda falharia no ERP e apareceria como erro sem causa aparente.
+    if (vistos.has(String(id))) {
+      pendencias.push({
+        campo: `${campo}.id`,
+        tipo: "Duplicado",
+        pedido: id,
+        message: `O pedido ${id} aparece mais de uma vez na mesma chamada. Deixe só uma.`,
+      });
+      continue;
+    }
+    vistos.add(String(id));
+
+    const naFila = porId.get(String(id));
+    if (!naFila) {
+      pendencias.push({
+        campo: `${campo}.id`,
+        tipo: "NaoEstaPendente",
+        pedido: id,
+        message:
+          `O pedido ${id} não está na fila de pendentes de aprovação. Ele pode já ter ` +
+          `sido decidido por outra pessoa, ter sido cancelado, estar inconsistente, ou ` +
+          `estar FORA DA JANELA — esta fila enxerga só os 100 últimos pedidos, então um ` +
+          `pedido antigo pode estar pendente sem aparecer aqui. Não afirme ao usuário ` +
+          `que ele já foi decidido; confirme no ERP.`,
+        pendentes_agora: fila.purchaseOrders.map((p) => p.id),
+      });
+      continue;
+    }
+
+    alvos.push({ id: naFila.id, retrato: naFila, observacao: pedido?.observacao });
+  }
+
+  return { alvos, pendencias };
+}
+
+// A observação vai no corpo do PATCH e o Sienge corta em 300 caracteres. Cortar
+// aqui deixa a prévia mostrar exatamente o texto que será gravado.
+const OBSERVACAO_MAX = 300;
+
+/**
+ * Retrato do que será decidido.
+ *
+ * Diferente da etapa 2, aqui o dinheiro aparece: `totalAmount` e a condição de
+ * pagamento são o que distingue aprovar um pedido de aprovar uma solicitação.
+ * Quem confirma precisa ver o valor sem ter que chamar outra tool.
+ */
+function retratarDecisaoDePedido(alvo) {
+  const p = alvo.retrato;
+  return {
+    pedido: p.id,
+    date: p.date,
+    fornecedor: p.supplier?.name ?? p.supplier ?? null,
+    obra: p.building?.name ?? p.building ?? null,
+    totalAmount: p.totalAmount,
+    paymentCondition: p.paymentCondition,
+    itens: p.items,
+    ...(alvo.observacao ? { observacao: String(alvo.observacao).slice(0, OBSERVACAO_MAX) } : {}),
+  };
+}
+
+/**
+ * Aprova ou reprova PEDIDOS de compra, conferindo antes contra a fila real.
+ *
+ * ETAPA 5 do processo — ver `knowledge/purchaseProcess.js`.
+ *
+ * Mesmos três modos da etapa 2, pelos mesmos motivos:
+ *
+ *   sem `pedidos`              → mostra a fila, sem gravar
+ *   com `pedidos`, sem confirmar → prévia do que seria decidido
+ *   com `pedidos` e confirmar    → grava
+ *
+ * DUAS COISAS QUE ESTA ETAPA TEM E A ETAPA 2 NÃO:
+ *
+ * 1. Compromisso financeiro. Aprovar um pedido é assumir a compra com preço e
+ *    condição acertados, não liberar uma necessidade interna. Daí o valor
+ *    aparecer na prévia e no resumo.
+ * 2. O e-mail que não sai — ver `EMAIL_NAO_SAI`. O aviso acompanha toda
+ *    resposta de aprovação.
+ *
+ * IRREVERSÍVEL: não há endpoint que desfaça autorização nem reprovação.
+ *
+ * NÃO É ATÔMICO: cada pedido é uma chamada. O retorno diz o que passou e o que
+ * não passou, um registro por pedido.
+ *
+ * @param {object} args
+ * @param {Array<number|{id: number, observacao?: string}>} [args.pedidos] o que
+ *   decidir. Sem este argumento, apenas lista a fila.
+ * @param {"aprovar"|"reprovar"} [args.decisao="aprovar"]
+ * @param {boolean} [args.confirmar=false] executa de fato
+ */
+export async function decidirPedidosDeCompra({
+  pedidos,
+  decisao = "aprovar",
+  confirmar = false,
+} = {}) {
+  const verbo = DECISOES_DE_PEDIDO[decisao];
+  if (!verbo) {
+    return {
+      success: false,
+      error: "DecisaoInvalida",
+      message: `decisao deve ser 'aprovar' ou 'reprovar' — recebido '${decisao}'.`,
+    };
+  }
+
+  const avisoDeEmail = decisao === "aprovar" ? { aviso_email: EMAIL_NAO_SAI } : {};
+
+  // Antes de gravar, relê do ERP mesmo com cache quente.
+  const fila = await filaDePedidos({ fresca: confirmar });
+  if (!fila.success) return fila;
+
+  if (!pedidos?.length) {
+    return {
+      success: true,
+      confirmacao_pendente: true,
+      message:
+        fila.count === 0
+          ? "Nenhum pedido de compra pendente de aprovação no momento. Nada foi gravado."
+          : `Nada foi gravado. ${fila.count} pedido(s) aguardando decisão. Mostre ao ` +
+            `usuário — com valor e fornecedor — e pergunte o que ${decisao}; depois chame ` +
+            `de novo com 'pedidos' e confirmar: true. Esta fila enxerga só os 100 últimos ` +
+            `pedidos: se o usuário citar um que não está aqui, ele pode estar pendente ` +
+            `fora da janela.`,
+      pendentes: fila.purchaseOrders,
+      ...avisoDeEmail,
+    };
+  }
+
+  const { alvos, pendencias } = conferirPedidosContraAFila(pedidos, fila);
+
+  if (pendencias.length) {
+    return {
+      success: false,
+      error: "DadosPendentes",
+      message:
+        `Nada foi ${verbo.participio}. ${pendencias.length} ponto(s) a resolver — todos ` +
+        `abaixo, para você tratar de uma vez. O que estava válido está em 'previa'.`,
+      pendencias,
+      ...(alvos.length ? { previa: alvos.map(retratarDecisaoDePedido) } : {}),
+      ...avisoDeEmail,
+    };
+  }
+
+  const previa = alvos.map(retratarDecisaoDePedido);
+  const total = previa.reduce((soma, p) => soma + (Number(p.totalAmount) || 0), 0);
+
+  if (!confirmar) {
+    return {
+      success: true,
+      confirmacao_pendente: true,
+      message:
+        `Nada foi gravado. Seriam ${verbo.participio}s ${alvos.length} pedido(s), ` +
+        `somando ${total}. A ${verbo.acao} é IRREVERSÍVEL por esta API — não há como ` +
+        `desfazer` +
+        (decisao === "aprovar"
+          ? `, e aprovar assume o compromisso de compra com o fornecedor. LEIA ` +
+            `'aviso_email' ao usuário: nenhum e-mail será enviado`
+          : "") +
+        `. Confirme com o usuário e chame de novo com confirmar: true e os MESMOS ` +
+        `argumentos.`,
+      decisao,
+      valor_total: total,
+      previa,
+      ...avisoDeEmail,
+    };
+  }
+
+  const resultados = [];
+  for (const alvo of alvos) {
+    const resposta = await verbo.executar(alvo.id, alvo.observacao);
+    resultados.push({
+      pedido: alvo.id,
+      [verbo.participio]: resposta.success,
+      ...(resposta.success
+        ? {}
+        : { error: resposta.error, details: resposta.details ?? resposta.message }),
+    });
+  }
+
+  // A fila mudou.
+  filaDePedidosEmCache = null;
+
+  const decididos = resultados.filter((r) => r[verbo.participio]);
+  const falhas = resultados.filter((r) => !r[verbo.participio]);
+
+  return {
+    success: falhas.length === 0,
+    decisao,
+    message: falhas.length
+      ? `⚠️ ${decididos.length} de ${resultados.length} pedido(s) ${verbo.participio}(s). ` +
+        `Os demais falharam e continuam pendentes — veja 'resultados'. Cada pedido é uma ` +
+        `chamada própria, então os que passaram estão gravados.`
+      : `✅ ${decididos.length} pedido(s) ${verbo.participio}(s).`,
+    resultados,
+    ...avisoDeEmail,
+    ...(decisao === "aprovar" ? { ajude_a_corrigir: CONVITE_DE_CHAMADO } : {}),
+    proximo_passo:
+      decisao === "aprovar"
+        ? "O pedido está autorizado, mas NINGUÉM FOI AVISADO — ver aviso_email. Combine " +
+          "com o usuário como a via chega ao fornecedor. Depois disso, a próxima etapa é " +
+          "o recebimento e a entrada da nota fiscal, que não é feita por aqui."
+        : "Reprovado o pedido, quem comprou precisa saber: a obra segue sem o insumo até " +
           "que alguém decida outra coisa.",
     previa,
   };

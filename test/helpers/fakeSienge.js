@@ -50,11 +50,15 @@ export function erroSienge(status, developerMessage, campos = []) {
  * @param {object} [cfg.cabecalhos] mapa id -> PurchaseRequest
  * @param {function} [cfg.postCabecalho] (corpo) => {status, body} — sobrescreve a criação
  * @param {function} [cfg.postItens] (corpo) => {status, body}
+ * @param {Array} [cfg.pedidos] retorno de GET /purchase-orders
+ * @param {object} [cfg.itensDePedido] mapa id do pedido -> itens
+ * @param {object} [cfg.credores] mapa id -> Creditor
+ * @param {function} [cfg.decidirPedido] (id, operacao) => {status, body}
  * @param {object} [cfg.env] variáveis extras
  */
 export async function iniciarSienge(cfg = {}) {
   const chamadas = [];
-  const recebido = { cabecalho: null, itens: null, autorizacoes: [] };
+  const recebido = { cabecalho: null, itens: null, autorizacoes: [], pedidos: [] };
 
   const servidor = http.createServer(async (req, res) => {
     const url = new URL(req.url, "http://interno");
@@ -90,6 +94,22 @@ export async function iniciarSienge(cfg = {}) {
       if (url.pathname.endsWith("/purchase-requests/all/items")) {
         return res.end(pagina(cfg.itensDeSolicitacao ?? [], url, cfg.totalDeItens));
       }
+      if (url.pathname.endsWith("/purchase-orders")) {
+        return res.end(pagina(cfg.pedidos ?? [], url));
+      }
+      const itensDoPedido = url.pathname.match(/\/purchase-orders\/(\d+)\/items$/);
+      if (itensDoPedido) {
+        return res.end(pagina((cfg.itensDePedido ?? {})[itensDoPedido[1]] ?? [], url));
+      }
+      const credor = url.pathname.match(/\/creditors\/(\d+)$/);
+      if (credor) {
+        const achado = (cfg.credores ?? {})[credor[1]];
+        if (!achado) {
+          res.statusCode = 404;
+          return res.end(erroSienge(404, "Credor não encontrado"));
+        }
+        return res.end(JSON.stringify(achado));
+      }
       const solicitacao = url.pathname.match(/\/purchase-requests\/(\d+)$/);
       if (solicitacao) {
         const dados = (cfg.cabecalhos ?? {})[solicitacao[1]];
@@ -99,6 +119,26 @@ export async function iniciarSienge(cfg = {}) {
         }
         return res.end(JSON.stringify(dados));
       }
+    }
+
+    // Decisão sobre o PEDIDO. PUT quando não há observação, PATCH quando há —
+    // é a bifurcação de `decidir` em api/purchase-orders-v1.js, e o teste
+    // precisa distinguir as duas para provar que o corpo só vai quando deve.
+    const decisaoDePedido = url.pathname.match(
+      /\/purchase-orders\/(\d+)\/(authorize|disapprove)$/
+    );
+    if (decisaoDePedido && (req.method === "PUT" || req.method === "PATCH")) {
+      recebido.pedidos.push({
+        pedido: Number(decisaoDePedido[1]),
+        decisao: decisaoDePedido[2] === "authorize" ? "aprovar" : "reprovar",
+        metodo: req.method,
+        corpo: await corpo(),
+      });
+      const r = cfg.decidirPedido
+        ? cfg.decidirPedido(Number(decisaoDePedido[1]), decisaoDePedido[2])
+        : { status: 204 };
+      res.statusCode = r.status;
+      return res.end(r.body ? (typeof r.body === "string" ? r.body : JSON.stringify(r.body)) : "");
     }
 
     if (req.method === "POST" || req.method === "PATCH") {

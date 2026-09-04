@@ -1,6 +1,6 @@
 # MCP Sienge Node
 
-> ⚠️ **ALFA — 0.8.3.** Em reescrita. A arquitetura mudou por inteiro na série 0.7 e
+> ⚠️ **ALFA — 0.9.0.** Em reescrita. A arquitetura mudou por inteiro na série 0.7 e
 > nomes de tool, formato de retorno e variáveis de ambiente ainda vão mudar sem
 > aviso. O módulo de compras já grava no ERP: use primeiro num ambiente de
 > homologação, e leia a seção [Antes de apontar para produção](#antes-de-apontar-para-produção).
@@ -117,7 +117,7 @@ catálogo de tools pelo ciclo de compras.
 | Módulo | Tools | Estado |
 |---|---|---|
 | `nucleo` | 3 | ✅ diagnóstico e autenticação |
-| `compras` | 6 | 🔨 solicitação e pedido; falta cotação e nota fiscal |
+| `compras` | 7 | 🔨 solicitação e pedido; falta cotação e nota fiscal |
 | `financeiro` | 1 | ⚠️ apenas um esqueleto de teste, não lê nada do ERP |
 
 ### As tools de hoje
@@ -132,6 +132,7 @@ catálogo de tools pelo ciclo de compras.
 | `compras_solicitacoes_para_aprovacao` | a fila de solicitações pendentes, agrupada por solicitação |
 | `compras_decidir_solicitacoes` | aprova ou reprova itens e solicitações, conferindo antes contra a fila real |
 | `compras_pedidos_para_aprovacao` | a fila de pedidos pendentes, com itens e fornecedor resolvidos |
+| `compras_decidir_pedidos` | aprova ou reprova pedidos de compra, com o valor na prévia — **não envia e-mail**, ver abaixo |
 | `compras_pedidos_pendentes_recebimento` | o que foi aprovado e ainda não chegou |
 | `carregar_compras` / `carregar_financeiro` | trazem as tools do módulo |
 | `descarregar_modulos` | libera o contexto dos módulos carregados |
@@ -148,10 +149,11 @@ prometa o que não faz.
 | 2 · Aprovação da solicitação | fila ✅ · aprovar ✅ · reprovar ✅ |
 | 3 · Cotação | ❌ |
 | 4 · Pedido de compra | fila ✅ |
-| 5 · Aprovação do pedido | ❌ |
+| 5 · Aprovação do pedido | fila ✅ · aprovar ✅ · reprovar ✅ |
 | 6 · Nota fiscal | pendências ✅ · lançar ❌ |
 
-**Criar e decidir solicitação são as únicas escritas do servidor.** Todo o resto lê.
+**As escritas do servidor são três:** criar solicitação, decidir solicitação e
+decidir pedido de compra. Todo o resto lê.
 
 ## Antes de apontar para produção
 
@@ -167,6 +169,13 @@ prometa o que não faz.
 - **A prévia é o portão.** Sem `confirmar: true`, `compras_criar_solicitacao`
   resolve tudo e devolve o que seria gravado, sem gravar. Confira a unidade de
   medida e o item de orçamento ali — é o último ponto antes do ERP.
+- **Aprovar pedido pela API não envia e-mail — bug do Sienge.** Na tela, aprovar
+  um pedido dispara os envios parametrizados: a via ao fornecedor, o aviso ao
+  usuário do Sienge e o relatório à obra. Pelo endpoint, **nenhum deles sai**,
+  mesmo com o envio automático ligado no ERP. Não é configuração faltando nem
+  limitação deste servidor: é o endpoint que não executa o gatilho que a tela
+  executa. O pedido fica aprovado e ninguém é avisado — combine o envio por
+  fora. A tool repete esse aviso em toda resposta de aprovação.
 - **Não há trilha de auditoria.** A versão anterior gravava um log de escrita;
   essa parte ainda não foi reescrita.
 
