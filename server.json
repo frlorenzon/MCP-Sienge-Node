@@ -1,0 +1,61 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.frlorenzon/sienge",
+  "title": "Sienge ERP",
+  "description": "Unofficial MCP server for the Sienge ERP (Softplan) API — Brazilian construction management. Exposes purchase requests, approvals and purchase orders as business-level tools that resolve names to internal codes.",
+  "version": "0.8.2",
+  "websiteUrl": "https://github.com/frlorenzon/MCP-Sienge-Node#readme",
+  "repository": {
+    "url": "https://github.com/frlorenzon/MCP-Sienge-Node",
+    "source": "github"
+  },
+  "packages": [
+    {
+      "registryType": "npm",
+      "registryBaseUrl": "https://registry.npmjs.org",
+      "identifier": "mcp-sienge-node",
+      "version": "0.8.2",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "SIENGE_SUBDOMAIN",
+          "description": "Your company's Sienge subdomain — it composes the URL of every request",
+          "isRequired": true,
+          "isSecret": false
+        },
+        {
+          "name": "SIENGE_API_KEY",
+          "description": "Sienge Bearer Token. Use this or SIENGE_USERNAME + SIENGE_PASSWORD",
+          "isRequired": false,
+          "isSecret": true
+        },
+        {
+          "name": "SIENGE_USERNAME",
+          "description": "Sienge user for Basic Auth, when not using SIENGE_API_KEY",
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
+          "name": "SIENGE_PASSWORD",
+          "description": "Sienge password for Basic Auth",
+          "isRequired": false,
+          "isSecret": true
+        },
+        {
+          "name": "SIENGE_SOLICITANTE",
+          "description": "Sienge user that signs purchase requests. Required only to create them",
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
+          "name": "SIENGE_PROFILE",
+          "description": "Modules loaded at startup, comma-separated (e.g. 'compras'). Empty loads only the core",
+          "isRequired": false,
+          "isSecret": false
+        }
+      ]
+    }
+  ]
+}
