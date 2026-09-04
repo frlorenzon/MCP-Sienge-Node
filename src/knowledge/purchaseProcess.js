@@ -70,17 +70,21 @@ export const ETAPAS = [
       "um item isolado, e também reprovar. Como a aprovação é item a item, uma " +
       "solicitação pode estar parcialmente aprovada — não trate 'aprovada' como " +
       "estado único da solicitação.",
-    tools: ["compras_solicitacoes_para_aprovacao"],
+    tools: ["compras_solicitacoes_para_aprovacao", "compras_aprovar_solicitacoes"],
     por_onde_comecar:
-      "compras_solicitacoes_para_aprovacao monta a fila: solicitações com ao " +
-      "menos um item pendente, agrupadas, com obra e solicitante resolvidos e " +
-      "as mais antigas primeiro. Ela só CONSULTA — a decisão é do usuário.",
+      "compras_aprovar_solicitacoes faz as duas coisas: chamada sem argumentos " +
+      "devolve a fila de pendentes, e com 'solicitacoes' aprova — um ou mais " +
+      "itens (liste em 'itens') ou a solicitação inteira (omita 'itens'). " +
+      "Várias solicitações numa chamada só. Ela SEMPRE confere contra a fila " +
+      "real antes de gravar: id já decidido por outra pessoa é recusado, não " +
+      "aprovado às cegas. NUNCA aprove sem mostrar antes o que está pendente. " +
+      "compras_solicitacoes_para_aprovacao continua útil para só olhar a fila.",
     cobertura_mcp: "parcial",
     observacao_cobertura:
-      "Só a fila está exposta como tool. autorizarSolicitacao, autorizarItens, " +
-      "autorizarItem, reprovarSolicitacao e reprovarItem existem em " +
-      "api/purchase-requests-v1.js mas ainda não são tool — aprovar e reprovar " +
-      "é pelo ERP.",
+      "Aprovar está coberto; REPROVAR não. reprovarSolicitacao e reprovarItem " +
+      "existem em api/purchase-requests-v1.js mas ainda não são tool — reprovar " +
+      "é pelo ERP. Aprovar é irreversível por esta API: não há endpoint que " +
+      "desfaça uma autorização.",
   },
   {
     etapa: 3,
@@ -282,15 +286,16 @@ export const LIMITACOES = [
   {
     assunto: "Cobertura deste servidor MCP",
     situacao:
-      "Das seis etapas, as etapas 1, 2, 4 e 6 têm tool. A ÚNICA de escrita é a " +
-      "criação de solicitação (etapa 1); as demais são consulta: a fila de " +
-      "solicitações a aprovar, a fila de pedidos a aprovar e os pedidos " +
-      "pendentes de recebimento.",
+      "Das seis etapas, as etapas 1, 2, 4 e 6 têm tool. As de ESCRITA são duas, " +
+      "ambas na solicitação: criar (etapa 1) e aprovar (etapa 2). As demais são " +
+      "consulta: a fila de pedidos a aprovar e os pedidos pendentes de " +
+      "recebimento. Reprovar, cotar, aprovar pedido e lançar nota são pelo ERP.",
     status: "CONFIRMADO NO CÓDIGO",
     observacao:
-      "O assistente cria solicitação, mas NÃO cota, NÃO aprova e NÃO lança nota " +
-      "fiscal por aqui. Quando o usuário pedir uma dessas ações, diga que o " +
-      "caminho é o ERP em vez de procurar uma tool que não existe.",
+      "O assistente cria e aprova solicitação, mas NÃO reprova, NÃO cota, NÃO " +
+      "aprova pedido e NÃO lança nota fiscal por aqui. Quando o usuário pedir " +
+      "uma dessas ações, diga que o caminho é o ERP em vez de procurar uma tool " +
+      "que não existe.",
   },
 ];
 

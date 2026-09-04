@@ -14,6 +14,7 @@ import {
   listarPedidosPendentesRecebimento,
   listarSolicitacoesParaAprovacao,
   criarSolicitacaoDeCompra,
+  aprovarSolicitacoesDeCompra,
 } from "../client/purchaseClient.js";
 import { descreverProcessoDeCompras } from "../knowledge/purchaseProcess.js";
 
@@ -136,6 +137,48 @@ export const purchaseModule = {
       inputSchema: { type: "object", properties: {} },
     },
     {
+      // Sem tool separada de listagem no caminho: chamar esta sem
+      // `solicitacoes` já devolve a fila. Obrigar duas tools para "veja e
+      // aprove" seria um turno a mais do modelo em toda decisão.
+      name: "compras_aprovar_solicitacoes",
+      description:
+        "Aprova itens de solicitação de compra (etapa 2): um ou mais itens, ou a " +
+        "solicitação inteira. Chamada SEM `solicitacoes`, devolve o que está pendente " +
+        "de aprovação — use isso para mostrar ao usuário antes de qualquer decisão. " +
+        "Só aprova o que a fila do ERP mostra como pendente no momento: id que já foi " +
+        "decidido por outra pessoa é recusado, não aprovado às cegas. Sem " +
+        "confirmar: true devolve a prévia do que seria aprovado, sem gravar. APROVAR É " +
+        "IRREVERSÍVEL — esta API não desfaz. Aprove várias solicitações e itens numa " +
+        "chamada só, nunca uma por vez.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          solicitacoes: {
+            type: "array",
+            description:
+              "o que aprovar; omita para apenas listar o que está pendente",
+            items: {
+              type: "object",
+              properties: {
+                id: { type: "number", description: "id da solicitação" },
+                itens: {
+                  type: "array",
+                  description:
+                    "números dos itens a aprovar; omita para aprovar a solicitação inteira",
+                  items: { type: "number" },
+                },
+              },
+              required: ["id"],
+            },
+          },
+          confirmar: {
+            type: "boolean",
+            description: "false (padrão) devolve a prévia; true aprova no Sienge",
+          },
+        },
+      },
+    },
+    {
       name: "compras_pedidos_para_aprovacao",
       description:
         "Lista os PEDIDOS de compra pendentes de aprovação — a ordem ao fornecedor, " +
@@ -174,6 +217,7 @@ export const purchaseModule = {
     compras_processo: descreverProcessoDeCompras,
     compras_criar_solicitacao: criarSolicitacaoDeCompra,
     compras_solicitacoes_para_aprovacao: listarSolicitacoesParaAprovacao,
+    compras_aprovar_solicitacoes: aprovarSolicitacoesDeCompra,
     compras_pedidos_para_aprovacao: listarPedidosParaAprovacao,
     compras_pedidos_pendentes_recebimento: listarPedidosPendentesRecebimento,
   },

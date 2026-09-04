@@ -13,6 +13,8 @@ import {
   buscarSolicitacao,
   criarSolicitacao,
   criarItens,
+  autorizarSolicitacao,
+  autorizarItens,
 } from "../api/purchase-requests-v1.js";
 import {
   buscarItensDaPlanilha,
@@ -1229,6 +1231,256 @@ export async function criarSolicitacaoDeCompra({
     proximo_passo:
       "Criar não aprova. A solicitação nasce aguardando autorização, que é decisão de " +
       "outra pessoa — ela aparecerá em compras_solicitacoes_para_aprovacao.",
+    previa,
+  };
+}
+
+// =========================================================
+// APROVAÇÃO DE SOLICITAÇÃO (ETAPA 2 DO PROCESSO)
+// =========================================================
+
+/**
+ * Cache curto da fila de pendentes.
+ *
+ * Existe para o percurso normal: a pessoa pede a fila, olha, manda aprovar. A
+ * segunda chamada não precisa varrer tudo de novo alguns segundos depois.
+ *
+ * A PRÉVIA pode sair daqui; a EXECUÇÃO nunca. Aprovar é irreversível pela API
+ * — não há endpoint que desfaça —, e entre ver a fila e mandar aprovar outra
+ * pessoa pode ter decidido o mesmo item. Antes de gravar, a fila é relida.
+ */
+const TTL_FILA_MS = 60 * 1000;
+let filaEmCache = null;
+
+async function filaDePendentes({ fresca = false } = {}) {
+  const agora = Date.now();
+  if (!fresca && filaEmCache && agora - filaEmCache.em < TTL_FILA_MS) {
+    return { ...filaEmCache.valor, do_cache: true };
+  }
+
+  const fila = await listarSolicitacoesParaAprovacao();
+  if (fila.success) filaEmCache = { em: agora, valor: fila };
+  return fila;
+}
+
+/**
+ * Confere o que foi pedido contra o que está de fato pendente.
+ *
+ * É a regra central desta tool: só se aprova o que a fila mostra como
+ * pendente. Um id que não está lá pode já ter sido decidido por outra pessoa,
+ * ou nunca ter existido — nos dois casos, aprovar às cegas grava uma decisão
+ * sobre algo que ninguém conferiu.
+ */
+function conferirContraAFila(pedidas, fila) {
+  const porId = new Map(fila.purchaseRequests.map((s) => [String(s.id), s]));
+  const alvos = [];
+  const pendencias = [];
+
+  for (const [indice, pedida] of pedidas.entries()) {
+    const campo = `solicitacoes[${indice}]`;
+    const id = pedida?.id;
+
+    if (id === undefined || id === null) {
+      pendencias.push({
+        campo: `${campo}.id`,
+        tipo: "Faltando",
+        message: "Informe o id da solicitação.",
+      });
+      continue;
+    }
+
+    const naFila = porId.get(String(id));
+    if (!naFila) {
+      pendencias.push({
+        campo: `${campo}.id`,
+        tipo: "NaoEstaPendente",
+        solicitacao: id,
+        message:
+          `A solicitação ${id} não está na fila de pendentes de aprovação. Ela pode já ` +
+          `ter sido decidida por outra pessoa, estar em rascunho, ou não existir. ` +
+          `Consulte a fila e confirme com o usuário antes de insistir.`,
+        pendentes_agora: fila.purchaseRequests.map((s) => s.id),
+      });
+      continue;
+    }
+
+    const pendentesDaSolicitacao = naFila.items.map((i) => i.itemNumber);
+
+    // Sem lista de itens, o pedido é a solicitação inteira — que na prática é
+    // "todos os itens dela que estão aguardando autorização", que é
+    // exatamente o que a fila mostra.
+    if (!pedida.itens?.length) {
+      alvos.push({
+        id: naFila.id,
+        inteira: true,
+        itens: pendentesDaSolicitacao,
+        retrato: naFila,
+      });
+      continue;
+    }
+
+    const desconhecidos = pedida.itens.filter((n) => !pendentesDaSolicitacao.includes(Number(n)));
+    if (desconhecidos.length) {
+      pendencias.push({
+        campo: `${campo}.itens`,
+        tipo: "ItensNaoPendentes",
+        solicitacao: id,
+        message:
+          `Os itens ${desconhecidos.join(", ")} da solicitação ${id} não estão pendentes ` +
+          `de aprovação. Os que estão são: ${pendentesDaSolicitacao.join(", ")}.`,
+        itens_pendentes: pendentesDaSolicitacao,
+      });
+      continue;
+    }
+
+    alvos.push({
+      id: naFila.id,
+      inteira: false,
+      itens: pedida.itens.map(Number),
+      retrato: naFila,
+    });
+  }
+
+  return { alvos, pendencias };
+}
+
+/** Retrato do que será aprovado, para a pessoa conferir antes de gravar. */
+function retratarAprovacao(alvo) {
+  const escolhidos = alvo.retrato.items.filter((i) => alvo.itens.includes(i.itemNumber));
+  return {
+    solicitacao: alvo.id,
+    obra: alvo.retrato.building?.name ?? alvo.retrato.building?.id ?? null,
+    solicitante: alvo.retrato.requesterUser,
+    requestDate: alvo.retrato.requestDate,
+    escopo: alvo.inteira
+      ? `solicitação inteira — ${alvo.itens.length} item(ns) pendente(s)`
+      : `${alvo.itens.length} de ${alvo.retrato.itemCount} item(ns) pendente(s)`,
+    itens: escolhidos.map((i) => ({
+      itemNumber: i.itemNumber,
+      resumo: `${i.quantity} ${i.unit} de ${i.product}${i.detail ? ` (${i.detail})` : ""}`,
+      approvalStage: i.approvalStage,
+    })),
+  };
+}
+
+/**
+ * Aprova itens ou solicitações inteiras, conferindo antes contra a fila real.
+ *
+ * ETAPA 2 do processo de compras — ver `knowledge/purchaseProcess.js`.
+ *
+ * TRÊS MODOS, numa tool só, para não obrigar quem chama a encadear tools:
+ *
+ *   sem `solicitacoes`              → mostra o que está pendente, sem gravar
+ *   com `solicitacoes`, sem confirmar → prévia do que seria aprovado
+ *   com `solicitacoes` e confirmar    → aprova
+ *
+ * O primeiro modo existe porque APROVAR SEM VER É O ERRO QUE ESTA TOOL
+ * PRECISA IMPEDIR. Quem pede "aprova a 622" pode estar lembrando de uma fila
+ * de ontem; o id pode já ter sido decidido por outra pessoa. Então o que vale
+ * é sempre a fila do ERP, não a memória da conversa — e o modo de listagem
+ * deixa isso barato, em vez de exigir uma tool separada antes.
+ *
+ * Aprovar é IRREVERSÍVEL por esta API: não há endpoint que desfaça uma
+ * autorização. Daí a confirmação explícita e a releitura da fila imediatamente
+ * antes de gravar.
+ *
+ * NÃO É ATÔMICO entre solicitações: cada uma é um PATCH próprio. O retorno diz
+ * o que passou e o que não passou, uma linha por solicitação.
+ *
+ * @param {object} args
+ * @param {Array<{id: number, itens?: number[]}>} [args.solicitacoes] o que
+ *   aprovar; `itens` com um ou mais números aprova só esses, omitido aprova a
+ *   solicitação inteira. Sem este argumento, a tool apenas lista o pendente.
+ * @param {boolean} [args.confirmar=false] executa de fato
+ */
+export async function aprovarSolicitacoesDeCompra({ solicitacoes, confirmar = false } = {}) {
+  // Antes de gravar, a fila é relida do ERP mesmo que o cache esteja quente.
+  const fila = await filaDePendentes({ fresca: confirmar });
+  if (!fila.success) return fila;
+
+  if (!solicitacoes?.length) {
+    return {
+      success: true,
+      confirmacao_pendente: true,
+      message:
+        fila.count === 0
+          ? "Nada pendente de aprovação no momento. Nada foi gravado."
+          : `Nada foi gravado. ${fila.count} solicitação(ões) aguardando aprovação, com ` +
+            `${fila.itemCount} item(ns) no total. Mostre ao usuário e pergunte o que ` +
+            `aprovar; depois chame de novo com 'solicitacoes' e confirmar: true. Para a ` +
+            `solicitação inteira, omita 'itens'; para parte dela, liste os itens.`,
+      pendentes: fila.purchaseRequests,
+      ...(fila.truncated ? { truncated: true } : {}),
+    };
+  }
+
+  const { alvos, pendencias } = conferirContraAFila(solicitacoes, fila);
+
+  if (pendencias.length) {
+    return {
+      success: false,
+      error: "DadosPendentes",
+      message:
+        `Nada foi aprovado. ${pendencias.length} ponto(s) a resolver — todos abaixo, para ` +
+        `você tratar de uma vez. O que estava válido no pedido está em 'previa'.`,
+      pendencias,
+      ...(alvos.length ? { previa: alvos.map(retratarAprovacao) } : {}),
+    };
+  }
+
+  const previa = alvos.map(retratarAprovacao);
+  const totalDeItens = alvos.reduce((soma, a) => soma + a.itens.length, 0);
+
+  if (!confirmar) {
+    return {
+      success: true,
+      confirmacao_pendente: true,
+      message:
+        `Nada foi gravado. Seriam aprovados ${totalDeItens} item(ns) em ` +
+        `${alvos.length} solicitação(ões). Aprovar é IRREVERSÍVEL por esta API — não há ` +
+        `como desfazer. Confirme com o usuário e chame de novo com confirmar: true e os ` +
+        `MESMOS argumentos.`,
+      previa,
+    };
+  }
+
+  const resultados = [];
+  for (const alvo of alvos) {
+    const resposta = alvo.inteira
+      ? await autorizarSolicitacao(alvo.id)
+      : await autorizarItens(alvo.id, alvo.itens);
+
+    resultados.push({
+      solicitacao: alvo.id,
+      escopo: alvo.inteira ? "inteira" : `itens ${alvo.itens.join(", ")}`,
+      aprovado: resposta.success,
+      ...(resposta.success
+        ? {}
+        : {
+            error: resposta.error,
+            details: resposta.details ?? resposta.message,
+            ...(resposta.campos_invalidos ? { campos_invalidos: resposta.campos_invalidos } : {}),
+          }),
+    });
+  }
+
+  // A fila mudou: o que estava em cache já não vale.
+  filaEmCache = null;
+
+  const aprovadas = resultados.filter((r) => r.aprovado);
+  const falhas = resultados.filter((r) => !r.aprovado);
+
+  return {
+    success: falhas.length === 0,
+    message: falhas.length
+      ? `⚠️ ${aprovadas.length} de ${resultados.length} solicitação(ões) aprovada(s). ` +
+        `As demais falharam e continuam pendentes — veja 'resultados'. Cada solicitação é ` +
+        `um PATCH próprio, então as que passaram estão gravadas.`
+      : `✅ ${totalDeItens} item(ns) aprovado(s) em ${aprovadas.length} solicitação(ões).`,
+    resultados,
+    proximo_passo:
+      "Aprovada a solicitação, a próxima etapa é a cotação (opcional) ou o pedido de " +
+      "compra — e é decisão de outra pessoa, em outro momento.",
     previa,
   };
 }

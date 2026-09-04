@@ -54,7 +54,7 @@ export function erroSienge(status, developerMessage, campos = []) {
  */
 export async function iniciarSienge(cfg = {}) {
   const chamadas = [];
-  const recebido = { cabecalho: null, itens: null };
+  const recebido = { cabecalho: null, itens: null, autorizacoes: [] };
 
   const servidor = http.createServer(async (req, res) => {
     const url = new URL(req.url, "http://interno");
@@ -101,7 +101,7 @@ export async function iniciarSienge(cfg = {}) {
       }
     }
 
-    if (req.method === "POST") {
+    if (req.method === "POST" || req.method === "PATCH") {
       if (url.pathname.endsWith("/purchase-requests")) {
         recebido.cabecalho = await corpo();
         const r = cfg.postCabecalho
@@ -109,6 +109,18 @@ export async function iniciarSienge(cfg = {}) {
           : { status: 201, body: { id: 2104 } };
         res.statusCode = r.status;
         return res.end(typeof r.body === "string" ? r.body : JSON.stringify(r.body));
+      }
+      // PATCH de autorização: /authorize na solicitação ou em items/authorize
+      const autorizacao = url.pathname.match(/\/purchase-requests\/(\d+)\/(items\/)?authorize$/);
+      if (autorizacao) {
+        recebido.autorizacoes.push({
+          solicitacao: Number(autorizacao[1]),
+          escopo: autorizacao[2] ? "itens" : "inteira",
+          corpo: await corpo(),
+        });
+        const r = cfg.patchAutorizar ? cfg.patchAutorizar(Number(autorizacao[1])) : { status: 204 };
+        res.statusCode = r.status;
+        return res.end(r.body ? (typeof r.body === "string" ? r.body : JSON.stringify(r.body)) : "");
       }
       if (/\/purchase-requests\/\d+\/items$/.test(url.pathname)) {
         recebido.itens = await corpo();
