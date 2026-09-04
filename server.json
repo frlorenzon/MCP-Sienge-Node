@@ -3,7 +3,7 @@
   "name": "io.github.frlorenzon/sienge",
   "title": "Sienge ERP",
   "description": "Unofficial MCP server for Sienge — the construction ERP used across Brazil (Softplan)",
-  "version": "0.8.2",
+  "version": "0.8.3",
   "websiteUrl": "https://github.com/frlorenzon/MCP-Sienge-Node#readme",
   "repository": {
     "url": "https://github.com/frlorenzon/MCP-Sienge-Node",
@@ -14,7 +14,7 @@
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "mcp-sienge-node",
-      "version": "0.8.2",
+      "version": "0.8.3",
       "transport": {
         "type": "stdio"
       },
