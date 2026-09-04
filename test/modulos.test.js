@@ -49,11 +49,15 @@ test("nomes de tool não colidem entre módulos", () => {
   }
 });
 
-test("compras_criar_solicitacao não exige quantidade no schema", () => {
+test("compras_criar_solicitacao recebe uma LISTA de itens", () => {
   const tool = purchaseModule.tools.find((t) => t.name === "compras_criar_solicitacao");
-  // Exigi-la impediria a chamada que descobre a unidade de medida do insumo.
-  assert.deepEqual(tool.inputSchema.required, ["obra", "insumo"]);
-  assert.ok(tool.inputSchema.properties.quantidade);
+  assert.deepEqual(tool.inputSchema.required, ["obra", "itens"]);
+
+  const item = tool.inputSchema.properties.itens;
+  assert.equal(item.type, "array", "uma solicitação comporta vários insumos");
+  // Exigir a quantidade impediria a chamada que descobre a unidade de medida.
+  assert.deepEqual(item.items.required, ["insumo"]);
+  assert.ok(item.items.properties.quantidade);
   assert.ok(tool.inputSchema.properties.confirmar);
 });
 

@@ -128,7 +128,7 @@ catálogo de tools pelo ciclo de compras.
 | `testar_conexao` | testa a credencial contra a API, com uma chamada barata |
 | `verificar_autenticacao` | qual mecanismo está configurado, sem chamar a API |
 | `compras_processo` | o processo de compras de ponta a ponta, e o que este servidor **não** cobre |
-| `compras_criar_solicitacao` | cria uma solicitação a partir de nomes, com prévia antes de gravar |
+| `compras_criar_solicitacao` | cria uma solicitação, com vários itens, a partir de nomes e com prévia antes de gravar |
 | `compras_solicitacoes_para_aprovacao` | a fila de solicitações pendentes, agrupada por solicitação |
 | `compras_pedidos_para_aprovacao` | a fila de pedidos pendentes, com itens e fornecedor resolvidos |
 | `compras_pedidos_pendentes_recebimento` | o que foi aprovado e ainda não chegou |

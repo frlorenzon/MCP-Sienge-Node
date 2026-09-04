@@ -29,8 +29,10 @@ export const ETAPAS = [
     nome: "Solicitação de Compra",
     api: "purchase-requests-v1",
     o_que_e:
-      "Alguém pede um insumo ou serviço. Registra o que se precisa e quanto, " +
-      "não quanto custa.",
+      "Alguém pede um ou mais insumos ou serviços. Registra o que se precisa e " +
+      "quanto, não quanto custa. Uma solicitação carrega VÁRIOS itens: é " +
+      "cabeçalho mais lista, e cada item tem seu insumo, quantidade e " +
+      "apropriação.",
     atencao:
       "NÃO existe preço nesta etapa, porque ainda não houve cotação. Há apenas " +
       "quantidade e unidade de medida. Se o usuário pedir valores de uma " +
@@ -43,7 +45,10 @@ export const ETAPAS = [
       "insumo, detalhe do insumo e itens de orçamento da apropriação. Ela " +
       "resolve todos os códigos internamente — não peça ids ao usuário. Sem " +
       "confirmar:true devolve só a prévia, sem gravar. Insumo e detalhe são " +
-      "coisas distintas: 'tubo de esgoto' é o insumo e '2\"' é o detalhe dele.",
+      "coisas distintas: 'tubo de esgoto' é o insumo e '2\"' é o detalhe dele. " +
+      "Quando o usuário pedir mais de um insumo, mande TODOS em `itens` na " +
+      "mesma chamada — uma chamada por insumo criaria uma solicitação solta " +
+      "para cada um, em vez de uma solicitação com vários itens.",
     cobertura_mcp: "parcial",
     observacao_cobertura:
       "Criar está coberto. CONSULTAR solicitação existente não: " +

@@ -43,33 +43,59 @@ export const purchaseModule = {
       description:
         "Cria uma solicitação de compra (etapa 1) a partir de NOMES — obra, insumo, " +
         "detalhe e itens de orçamento —, resolvendo todos os códigos internamente. " +
-        "Não peça ids ao usuário nem os busque com outras tools. Sem confirmar: true " +
-        "ela apenas devolve a prévia com os códigos resolvidos, sem gravar nada; " +
-        "mostre a prévia, obtenha o aval do usuário e chame de novo com os MESMOS " +
-        "argumentos mais confirmar: true. Nome ambíguo volta com os candidatos, para " +
-        "você repetir a chamada mais específica. NUNCA invente a unidade de medida: " +
-        "chame sem quantidade e a tool responde em que unidade aquele insumo é " +
-        "solicitado — só então pergunte a quantidade ao usuário, nessa unidade. " +
-        "Criar NÃO aprova.",
+        "Não peça ids ao usuário nem os busque com outras tools. UMA solicitação " +
+        "comporta VÁRIOS insumos: mande todos em `itens` numa chamada só, nunca uma " +
+        "chamada por insumo — isso criaria várias solicitações soltas. Sem " +
+        "confirmar: true ela apenas devolve a prévia, sem gravar; mostre a prévia, " +
+        "obtenha o aval do usuário e chame de novo com os MESMOS argumentos mais " +
+        "confirmar: true. Nome ambíguo ou dado faltando volta com todas as " +
+        "pendências de uma vez, cada uma dizendo a qual item pertence. NUNCA invente " +
+        "a unidade de medida: chame sem quantidade e a tool responde em que unidade " +
+        "cada insumo é solicitado. Criar NÃO aprova.",
       inputSchema: {
         type: "object",
         properties: {
           obra: { type: "string", description: "nome (ou parte) da obra" },
-          insumo: { type: "string", description: "nome do insumo, ex: 'tubo de esgoto'" },
-          quantidade: {
-            type: "number",
-            description:
-              "quantidade NA UNIDADE DO INSUMO; omita para descobrir qual é essa unidade",
-          },
-          unidade: {
-            type: "string",
-            description:
-              "unidade em que você entendeu a quantidade; divergindo do cadastro, vira aviso na prévia",
+          itens: {
+            type: "array",
+            description: "os insumos pedidos; uma solicitação comporta vários",
+            items: {
+              type: "object",
+              properties: {
+                insumo: { type: "string", description: "nome do insumo, ex: 'tubo de esgoto'" },
+                quantidade: {
+                  type: "number",
+                  description:
+                    "quantidade NA UNIDADE DO INSUMO; omita para descobrir qual é essa unidade",
+                },
+                detalhe: { type: "string", description: "detalhe do insumo, ex: '2\"'" },
+                unidade: {
+                  type: "string",
+                  description:
+                    "unidade em que você entendeu a quantidade; divergindo do cadastro, vira aviso",
+                },
+                apropriacoes: {
+                  type: "array",
+                  description: "rateio só deste item; omita para usar o da solicitação",
+                  items: {
+                    type: "object",
+                    properties: {
+                      item: { type: "string" },
+                      percentual: { type: "number" },
+                    },
+                    required: ["item", "percentual"],
+                  },
+                },
+                observacao: { type: "string" },
+              },
+              required: ["insumo"],
+            },
           },
           apropriacoes: {
             type: "array",
             description:
-              "rateio por item de orçamento; os percentuais precisam somar 100",
+              "rateio por item de orçamento, somando 100, válido para todos os itens que " +
+              "não trouxerem o seu",
             items: {
               type: "object",
               properties: {
@@ -79,7 +105,6 @@ export const purchaseModule = {
               required: ["item", "percentual"],
             },
           },
-          detalhe: { type: "string", description: "detalhe do insumo, ex: '2\"'" },
           unidade_construtiva: {
             type: "number",
             description: "código da unidade construtiva; 1 (custo de obra) se omitido",
@@ -88,13 +113,13 @@ export const purchaseModule = {
             type: "number",
             description: "prazo da necessidade de entrega; 7 dias se omitido",
           },
-          observacao: { type: "string" },
+          observacao: { type: "string", description: "observação da solicitação" },
           confirmar: {
             type: "boolean",
             description: "false (padrão) devolve a prévia; true grava no Sienge",
           },
         },
-        required: ["obra", "insumo"],
+        required: ["obra", "itens"],
       },
     },
     {

@@ -47,9 +47,7 @@ const NIVEL_2 = { env: { SIENGE_NIVEL_APROPRIACAO: "2" } };
 
 const PEDIDO = {
   obra: "iu.06",
-  insumo: "Tubo de Esgoto",
-  detalhe: '2"',
-  quantidade: 9,
+  itens: [{ insumo: "Tubo de Esgoto", detalhe: '2"', quantidade: 9 }],
   apropriacoes: [{ item: "02.032", percentual: 100 }],
 };
 
@@ -70,6 +68,7 @@ test("a prévia não grava nada", async () => {
     assert.equal(r.confirmacao_pendente, true);
     assert.equal(sienge.contar("POST"), 0, "prévia não pode chamar nenhum POST");
     assert.match(r.previa.resumo, /9 pç de 'Tubo de Esgoto' detalhe '2"'/);
+    assert.equal(r.previa.itens.length, 1);
   });
 });
 
@@ -89,6 +88,7 @@ test("confirmar envia o corpo exato que o spec exige", async () => {
     // `draft` é readOnly no spec: mandá-lo seria recusado.
     assert.ok(!("draft" in sienge.recebido.cabecalho));
 
+    assert.equal(sienge.recebido.itens.length, 1);
     const [item] = sienge.recebido.itens;
     assert.equal(item.productId, 1001);
     assert.equal(item.detailId, 7);
@@ -132,11 +132,11 @@ test("departamento e categoria vão no corpo quando configurados", async () => {
 
 test("sem quantidade, a pendência traz a unidade do insumo", async () => {
   await comSienge(NIVEL_2, async (criar) => {
-    const r = await criar({ obra: "iu.06", insumo: "Tubo de Esgoto", detalhe: '2"' });
+    const r = await criar({ obra: "iu.06", itens: [{ insumo: "Tubo de Esgoto", detalhe: '2"' }] });
     assert.equal(r.success, false);
     assert.equal(r.error, "DadosPendentes");
 
-    const quantidade = r.pendencias.find((p) => p.campo === "quantidade");
+    const quantidade = r.pendencias.find((p) => p.campo === "itens[0].quantidade");
     assert.equal(quantidade.unidade_do_insumo, "pç");
     assert.match(quantidade.message, /EM 'pç'/);
     // O erro que originou este teste: a tool cobrava quantidade sem dizer a
@@ -144,7 +144,8 @@ test("sem quantidade, a pendência traz a unidade do insumo", async () => {
     // mensagem cita "metros" de propósito — para PROIBIR —, então o que se
     // verifica é que ela pede na unidade do cadastro e veta as outras.
     assert.match(quantidade.message, /não ofereça outra/);
-    assert.equal(r.resolvido.insumo.unidade, "pç");
+    // O insumo já resolvido não é perguntado de novo.
+    assert.equal(r.resolvido.obra.id, 30);
   });
 });
 
@@ -152,12 +153,12 @@ test("todas as pendências vêm juntas, não uma por vez", async () => {
   await comSienge(NIVEL_2, async (criar) => {
     const r = await criar({
       obra: "iu.06",
-      insumo: "tubo", // ambíguo
+      itens: [{ insumo: "tubo" }], // ambíguo, e sem quantidade
       apropriacoes: [{ item: "instalações", percentual: 100 }], // ambíguo
     });
     assert.equal(r.success, false);
     const campos = r.pendencias.map((p) => p.campo).sort();
-    assert.deepEqual(campos, ["apropriacoes[0].item", "insumo", "quantidade"]);
+    assert.deepEqual(campos, ["apropriacoes[0].item", "itens[0].insumo", "itens[0].quantidade"]);
     // O que já resolveu vem junto, para não ser perguntado de novo.
     assert.equal(r.resolvido.obra.name, "IU.06 - Residencial Ipê Uva");
   });
@@ -165,8 +166,8 @@ test("todas as pendências vêm juntas, não uma por vez", async () => {
 
 test("sem o insumo identificado, a cobrança de quantidade não inventa unidade", async () => {
   await comSienge(NIVEL_2, async (criar) => {
-    const r = await criar({ obra: "iu.06", insumo: "tubo" });
-    const quantidade = r.pendencias.find((p) => p.campo === "quantidade");
+    const r = await criar({ obra: "iu.06", itens: [{ insumo: "tubo" }] });
+    const quantidade = r.pendencias.find((p) => p.campo === "itens[0].quantidade");
     assert.ok(!("unidade_do_insumo" in quantidade));
     assert.match(quantidade.message, /só pode ser dita depois/);
   });
@@ -194,7 +195,7 @@ test("igualdade exata vence substring", async () => {
     // sem a regra, o nome curto seria ineditável.
     const r = await criar(PEDIDO);
     assert.equal(r.success, true);
-    assert.equal(r.previa.insumo.productId, 1001);
+    assert.equal(r.previa.itens[0].productId, 1001);
   });
 });
 
@@ -216,7 +217,7 @@ test("sem SIENGE_NIVEL_APROPRIACAO, todos os níveis valem", async () => {
       apropriacoes: [{ item: "Conexões hidráulicas", percentual: 100 }],
     });
     assert.equal(r.success, true);
-    assert.equal(r.previa.apropriacoes[0].costEstimationItemReference, "02.032.000.002");
+    assert.equal(r.previa.itens[0].apropriacoes[0].costEstimationItemReference, "02.032.000.002");
   });
 });
 
@@ -237,10 +238,14 @@ test("percentuais que não fecham 100 barram antes de qualquer POST", async () =
 
 test("unidade divergente vira aviso na prévia, não recusa", async () => {
   await comSienge(NIVEL_2, async (criar) => {
-    const r = await criar({ ...PEDIDO, quantidade: 50, unidade: "m" });
+    const r = await criar({
+      ...PEDIDO,
+      itens: [{ insumo: "Tubo de Esgoto", detalhe: '2"', quantidade: 50, unidade: "m" }],
+    });
     assert.equal(r.success, true);
-    assert.match(r.previa.avisoUnidade, /informou a quantidade em 'm'/);
-    assert.match(r.previa.avisoUnidade, /solicitado em 'pç'/);
+    const aviso = r.previa.itens[0].avisoUnidade;
+    assert.match(aviso, /informou a quantidade em 'm'/);
+    assert.match(aviso, /solicitado em 'pç'/);
   });
 });
 
@@ -281,6 +286,7 @@ test("400 no cabeçalho: nada foi criado, e o motivo vem nomeado", async () => {
       assert.equal(r.details, "createdBy não pode ser nulo");
       assert.equal(r.campos_invalidos[0].field, "createdBy");
       assert.ok(r.payload_enviado, "o que foi enviado é metade do diagnóstico");
+      assert.equal(r.itens_que_seriam_enviados.length, 1);
     }
   );
 });
@@ -309,5 +315,142 @@ test("o orçamento é lido uma vez por chamada, não uma vez por apropriação",
     });
     assert.equal(sienge.contar("/sheets/"), 1);
     assert.equal(sienge.contar("/resources"), 1);
+  });
+});
+
+// ── Vários itens numa solicitação ────────────────────────────────────────────
+// O Sienge modela a solicitação como cabeçalho + LISTA de itens. Enquanto a
+// tool aceitava um insumo só, pedir três obrigava três chamadas — e cada uma
+// criava uma solicitação separada, além de fazer o modelo repetir o ciclo
+// inteiro de prévia e confirmação.
+
+test("três insumos entram numa solicitação só", async () => {
+  await comSienge(NIVEL_2, async (criar, sienge) => {
+    const r = await criar({
+      obra: "iu.06",
+      itens: [
+        { insumo: "Tubo de Esgoto", detalhe: '2"', quantidade: 9 },
+        { insumo: "Tubo de Esgoto", detalhe: '4"', quantidade: 4 },
+        { insumo: "Tubo de Esgoto Reforçado", quantidade: 2 },
+      ],
+      apropriacoes: [{ item: "02.032", percentual: 100 }],
+      confirmar: true,
+    });
+
+    assert.equal(r.success, true);
+    assert.equal(r.itemCount, 3);
+    assert.equal(sienge.contar("POST"), 2, "um POST de cabeçalho e um de itens");
+    assert.equal(sienge.recebido.itens.length, 3);
+    assert.deepEqual(
+      sienge.recebido.itens.map((i) => [i.productId, i.detailId, i.quantity]),
+      [[1001, 7, 9], [1001, 8, 4], [1002, undefined, 2]]
+    );
+  });
+});
+
+test("o rateio da solicitação vale para os itens que não trazem o seu", async () => {
+  await comSienge(NIVEL_2, async (criar, sienge) => {
+    await criar({
+      obra: "iu.06",
+      itens: [
+        { insumo: "Tubo de Esgoto", detalhe: '2"', quantidade: 9 },
+        {
+          insumo: "Tubo de Esgoto Reforçado",
+          quantidade: 2,
+          apropriacoes: [{ item: "02.033", percentual: 100 }],
+        },
+      ],
+      apropriacoes: [{ item: "02.032", percentual: 100 }],
+      confirmar: true,
+    });
+
+    const [primeiro, segundo] = sienge.recebido.itens;
+    assert.equal(primeiro.buildingsApropriations[0].costEstimationItemReference, "02.032");
+    assert.equal(segundo.buildingsApropriations[0].costEstimationItemReference, "02.033");
+  });
+});
+
+test("a pendência diz de qual item ela é", async () => {
+  await comSienge(NIVEL_2, async (criar) => {
+    const r = await criar({
+      obra: "iu.06",
+      itens: [
+        { insumo: "Tubo de Esgoto", detalhe: '2"', quantidade: 9 }, // ok
+        { insumo: "Tubo de Esgoto", detalhe: '4"' }, // sem quantidade
+        { insumo: "telha de barro", quantidade: 3 }, // não existe
+      ],
+      apropriacoes: [{ item: "02.032", percentual: 100 }],
+    });
+
+    assert.equal(r.success, false);
+    const campos = r.pendencias.map((p) => p.campo).sort();
+    assert.deepEqual(campos, ["itens[1].quantidade", "itens[2].insumo"]);
+
+    // A unidade cobrada é a do item 1, não a de qualquer insumo.
+    const quantidade = r.pendencias.find((p) => p.campo === "itens[1].quantidade");
+    assert.equal(quantidade.unidade_do_insumo, "pç");
+
+    // O item que já resolveu volta pronto, para não ser perguntado de novo.
+    assert.equal(r.resolvido.itens.length, 1);
+    assert.match(r.resolvido.itens[0].resumo, /9 pç/);
+  });
+});
+
+test("o orçamento é lido uma vez, não uma vez por item", async () => {
+  await comSienge(NIVEL_2, async (criar, sienge) => {
+    await criar({
+      obra: "iu.06",
+      itens: [
+        { insumo: "Tubo de Esgoto", detalhe: '2"', quantidade: 9 },
+        { insumo: "Tubo de Esgoto", detalhe: '4"', quantidade: 4 },
+        { insumo: "Tubo de Esgoto Reforçado", quantidade: 2 },
+      ],
+      apropriacoes: [{ item: "02.032", percentual: 100 }],
+    });
+    assert.equal(sienge.contar("/resources"), 1);
+    assert.equal(sienge.contar("/sheets/"), 1);
+  });
+});
+
+test("cada item tem sua própria necessidade de entrega, com a quantidade dele", async () => {
+  await comSienge(NIVEL_2, async (criar, sienge) => {
+    await criar({
+      obra: "iu.06",
+      itens: [
+        { insumo: "Tubo de Esgoto", detalhe: '2"', quantidade: 9 },
+        { insumo: "Tubo de Esgoto Reforçado", quantidade: 2 },
+      ],
+      apropriacoes: [{ item: "02.032", percentual: 100 }],
+      confirmar: true,
+    });
+    assert.deepEqual(
+      sienge.recebido.itens.map((i) => i.deliveryRequirements[0].requirementQuantity),
+      [9, 2]
+    );
+  });
+});
+
+test("lista de itens vazia recusa e explica que a solicitação comporta vários", async () => {
+  await comSienge(NIVEL_2, async (criar, sienge) => {
+    const r = await criar({ obra: "iu.06", itens: [] });
+    assert.equal(r.error, "ItensNaoInformados");
+    assert.match(r.message, /vários insumos/);
+    assert.equal(sienge.contar("POST"), 0);
+  });
+});
+
+test("observação por item vira notes daquele item", async () => {
+  await comSienge(NIVEL_2, async (criar, sienge) => {
+    await criar({
+      obra: "iu.06",
+      itens: [
+        { insumo: "Tubo de Esgoto", detalhe: '2"', quantidade: 9, observacao: "laje do 3º" },
+        { insumo: "Tubo de Esgoto Reforçado", quantidade: 2 },
+      ],
+      apropriacoes: [{ item: "02.032", percentual: 100 }],
+      confirmar: true,
+    });
+    assert.equal(sienge.recebido.itens[0].notes, "laje do 3º");
+    assert.ok(!("notes" in sienge.recebido.itens[1]));
   });
 });

@@ -768,7 +768,7 @@ function comoEscolher(itens, nivel) {
   );
 }
 
-async function resolverApropriacoes(buildingId, buildingUnitId, apropriacoes) {
+async function resolverApropriacoes(buildingId, buildingUnitId, apropriacoes, prefixo = "") {
   const planilha = await itensApropriaveis(buildingId, buildingUnitId);
   if (!planilha.success) {
     return {
@@ -834,7 +834,7 @@ async function resolverApropriacoes(buildingId, buildingUnitId, apropriacoes) {
     if (!achado.success) {
       const naoAchou = achado.error === "NaoEncontrado";
       pendencias.push({
-        campo: `apropriacoes[${posicao}].item`,
+        campo: `${prefixo}apropriacoes[${posicao}].item`,
         termo: pedida.item,
         tipo: achado.error,
         message: naoAchou
@@ -865,7 +865,7 @@ async function resolverApropriacoes(buildingId, buildingUnitId, apropriacoes) {
     // Tolerância de 1 centésimo: 1/3 + 1/3 + 1/3 nunca fecha exato.
     if (Math.abs(soma - 100) > 0.01) {
       pendencias.push({
-        campo: "apropriacoes",
+        campo: `${prefixo}apropriacoes`,
         tipo: "PercentuaisNaoFecham",
         message: `Os percentuais somam ${soma}%, e precisam somar 100%.`,
       });
@@ -875,172 +875,60 @@ async function resolverApropriacoes(buildingId, buildingUnitId, apropriacoes) {
   return { resolvidas, pendencias };
 }
 
+
 /**
- * Cria uma solicitação de compra a partir de nomes, com prévia obrigatória.
+ * Resolve um item pedido: insumo, detalhe, quantidade e apropriações.
  *
- * ETAPA 1 do processo de compras — ver `knowledge/purchaseProcess.js`. Criar
- * NÃO aprova: a solicitação nasce aguardando decisão de outra pessoa.
- *
- * RESOLVE TUDO ANTES DE COBRAR QUALQUER COISA. Só a obra é bloqueante, porque
- * insumo e planilha vivem dentro dela; do resto, a função resolve o que os
- * argumentos permitem e devolve TODAS as pendências de uma vez — o que falta e
- * o que não foi reconhecido, juntos, com o que já resolveu ao lado.
- *
- * É o que impede dois erros distintos:
- *   - cobrar `quantidade` sem dizer a unidade do insumo, que leva quem
- *     pergunta a inventar uma ("50 metros" de um insumo vendido em peça de
- *     6 m vira 300 m);
- *   - devolver uma pendência por vez, gastando um turno do modelo por erro.
- *
- * `confirmar: false` (o padrão) monta o payload e devolve a prévia SEM
- * escrever. `confirmar: true` repete a resolução — de cache, se dentro da
- * janela — e executa.
- *
- * NÃO É ATÔMICO: a API cria o cabeçalho num POST e os itens em outro. Se o
- * segundo falhar, sobra uma solicitação sem itens no Sienge, e o retorno diz
- * qual id ficou pendente — não há DELETE de solicitação no spec.
- *
- * @param {object} args
- * @param {string} args.obra nome (ou parte) da obra
- * @param {string} args.insumo nome (ou parte) do insumo no orçamento da obra
- * @param {number} [args.quantidade] quantidade, NA UNIDADE DO INSUMO — quando
- *   omitida, a função resolve o insumo e devolve qual é essa unidade
- * @param {string} [args.unidade] unidade em que quem chamou pensou a
- *   quantidade; se divergir do cadastro, vira aviso na prévia
- * @param {Array<{item: string, percentual: number}>} [args.apropriacoes] rateio
- *   por item de orçamento; os percentuais precisam somar 100
- * @param {string} [args.detalhe] detalhe do insumo, ex. '2"'
- * @param {number} [args.unidade_construtiva=1] código da unidade construtiva
- * @param {number} [args.dias_para_entrega=7] prazo da necessidade de entrega
- * @param {string} [args.observacao] observação da solicitação
- * @param {boolean} [args.confirmar=false] executa de fato
+ * Devolve o item pronto para o payload, o retrato dele para a prévia e as
+ * pendências nomeadas com o índice — `itens[2].quantidade` diz de qual item a
+ * cobrança é, sem o que uma solicitação de dez insumos vira dez perguntas
+ * indistinguíveis.
  */
-export async function criarSolicitacaoDeCompra({
-  obra,
-  insumo,
-  quantidade,
-  unidade,
-  apropriacoes,
-  detalhe,
-  unidade_construtiva = 1,
-  dias_para_entrega = DIAS_ATE_ENTREGA_PADRAO,
-  observacao,
-  confirmar = false,
-} = {}) {
-  const solicitante = (process.env.SIENGE_SOLICITANTE || "").trim();
-  // Quem CADASTRA, que o Sienge exige à parte de quem PEDE. Na operação normal
-  // é a mesma pessoa, então o padrão é o solicitante e ninguém configura nada;
-  // SIENGE_CADASTRANTE existe para quando o usuário da integração difere do
-  // solicitante. O spec exige que ele tenha permissão na obra da solicitação.
-  const cadastrante = (process.env.SIENGE_CADASTRANTE || "").trim() || solicitante;
-
-  // Departamento e categoria são opcionais no spec, mas a parametrização do
-  // Sienge pode exigi-los — e uma tool que não consegue enviá-los força quem
-  // instala a DESLIGAR a regra do ERP para conseguir usar a integração. Como
-  // são constantes da obra e não escolha por chamada, saem do ambiente e não
-  // custam nada no schema. Vazios, simplesmente não vão no corpo.
-  const departamento = Number(process.env.SIENGE_DEPARTAMENTO) || undefined;
-  const categoria = Number(process.env.SIENGE_CATEGORIA) || undefined;
-  if (!solicitante) {
-    return {
-      success: false,
-      error: "SolicitanteNaoConfigurado",
-      message:
-        "SIENGE_SOLICITANTE não está configurado no .env — é o usuário do Sienge que " +
-        "assina a solicitação, e a API o exige.",
-    };
-  }
-
-  // A obra é a única pendência que impede o resto: insumo e planilha são
-  // consultados DENTRO dela. Sem obra não há o que resolver, então ela sai
-  // sozinha em vez de esperar as outras.
-  if (!obra) {
-    return {
-      success: false,
-      error: "ObraNaoInformada",
-      message: "Informe a obra — insumo e apropriações são procurados dentro dela.",
-    };
-  }
-  const resolvidaObra = await resolverIdDaObraPorNome(obra);
-  if (!resolvidaObra.success) return resolvidaObra;
-  const buildingId = resolvidaObra.id;
-
+async function resolverItemPedido(buildingId, unidadeConstrutiva, pedido, indice, padroes) {
+  const prefixo = `itens[${indice}].`;
   const pendencias = [];
-  const resolvido = { obra: { id: buildingId, name: resolvidaObra.name ?? null } };
 
-  // ---- insumo (e detalhe) ----
-  let dadosInsumo;
-  if (!insumo) {
+  if (!pedido?.insumo) {
     pendencias.push({
-      campo: "insumo",
+      campo: `${prefixo}insumo`,
       tipo: "Faltando",
       message: "Informe o insumo. Ele é procurado no orçamento desta obra.",
     });
-  } else {
-    const achado = await resolverInsumo(buildingId, insumo, detalhe);
-    if (achado.success) {
-      dadosInsumo = achado;
-      resolvido.insumo = {
-        productId: achado.productId,
-        product: achado.product,
-        ...(achado.detail ? { detailId: achado.detailId, detail: achado.detail } : {}),
-        unidade: achado.unitySymbol,
-      };
-      if (achado.avisoDetalhe) {
-        pendencias.push({ campo: "detalhe", tipo: "Aviso", message: achado.avisoDetalhe });
-      }
-    } else {
-      pendencias.push({
-        campo: detalhe && achado.message?.includes("detalhes do insumo") ? "detalhe" : "insumo",
-        termo: insumo,
-        tipo: achado.error,
-        message: achado.message,
-        ...(achado.candidatos ? { candidatos: achado.candidatos } : {}),
-      });
-    }
   }
 
-  // ---- apropriações ----
-  let apropriacoesResolvidas = [];
-  if (!apropriacoes?.length) {
-    // Leva o catálogo já aqui: sem ele, quem pergunta ao usuário teria que
-    // pedir o nome de cor. Com ele, propõe o item e só confirma.
-    const planilha = await itensApropriaveis(buildingId, unidade_construtiva);
-    const temItens = planilha.success && planilha.items.length > 0;
+  const achado = pedido?.insumo
+    ? await resolverInsumo(buildingId, pedido.insumo, pedido.detalhe)
+    : null;
+
+  let dadosInsumo;
+  if (achado?.success) {
+    dadosInsumo = achado;
+    if (achado.avisoDetalhe) {
+      pendencias.push({ campo: `${prefixo}detalhe`, tipo: "Aviso", message: achado.avisoDetalhe });
+    }
+  } else if (achado) {
     pendencias.push({
-      campo: "apropriacoes",
-      tipo: "Faltando",
-      message:
-        `Informe o rateio por item de orçamento, com percentuais somando 100. ` +
-        (temItens
-          ? comoEscolher(planilha.items, planilha.nivel)
-          : `Os itens são procurados na planilha da unidade construtiva ${unidade_construtiva}.`),
-      ...(temItens ? { itens_disponiveis: catalogo(planilha.items) } : {}),
+      campo: pedido.detalhe && achado.message?.includes("detalhes do insumo")
+        ? `${prefixo}detalhe`
+        : `${prefixo}insumo`,
+      termo: pedido.insumo,
+      tipo: achado.error,
+      message: achado.message,
+      ...(achado.candidatos ? { candidatos: achado.candidatos } : {}),
     });
-  } else {
-    const resultado = await resolverApropriacoes(buildingId, unidade_construtiva, apropriacoes);
-    apropriacoesResolvidas = resultado.resolvidas;
-    pendencias.push(...resultado.pendencias);
-    if (resultado.resolvidas.length) {
-      resolvido.apropriacoes = resultado.resolvidas.map((a) => ({
-        costEstimationItemReference: a.costEstimationItemReference,
-        description: a._descricao,
-        percentage: a.percentage,
-      }));
-    }
   }
 
-  // ---- quantidade ----
-  // Depende do insumo: a unidade viaja junto com a cobrança, senão quem
-  // pergunta inventa uma.
+  // A UNIDADE SÓ É CONHECIDA DEPOIS DE RESOLVER O INSUMO. Cobrar quantidade
+  // antes obriga a mensagem a ser genérica, e quem lê inventa a unidade —
+  // pede metros de um insumo vendido em peça de 6 m.
   const unidadeDoInsumo = dadosInsumo?.unitySymbol;
   const comoChamar = dadosInsumo
     ? `'${dadosInsumo.product}'` + (dadosInsumo.detail ? ` detalhe '${dadosInsumo.detail}'` : "")
     : "o insumo";
 
-  if (!(Number(quantidade) > 0)) {
+  if (!(Number(pedido?.quantidade) > 0)) {
     pendencias.push({
-      campo: "quantidade",
+      campo: `${prefixo}quantidade`,
       tipo: "Faltando",
       ...(unidadeDoInsumo ? { unidade_do_insumo: unidadeDoInsumo } : {}),
       message: unidadeDoInsumo
@@ -1054,14 +942,203 @@ export async function criarSolicitacaoDeCompra({
   }
 
   let avisoUnidade;
-  if (unidade && unidadeDoInsumo && normalizar(unidade) !== normalizar(unidadeDoInsumo)) {
+  if (pedido?.unidade && unidadeDoInsumo && normalizar(pedido.unidade) !== normalizar(unidadeDoInsumo)) {
     avisoUnidade =
-      `⚠️ Você informou a quantidade em '${unidade}', mas ${comoChamar} é solicitado em ` +
-      `'${unidadeDoInsumo}'. Os ${quantidade} serão gravados como '${unidadeDoInsumo}'. ` +
-      `Confirme a conversão antes de prosseguir.`;
+      `⚠️ Você informou a quantidade em '${pedido.unidade}', mas ${comoChamar} é solicitado ` +
+      `em '${unidadeDoInsumo}'. Os ${pedido.quantidade} serão gravados como ` +
+      `'${unidadeDoInsumo}'. Confirme a conversão antes de prosseguir.`;
   }
 
-  // ---- uma resposta com tudo ----
+  // Rateio próprio do item, ou o da solicitação. Itens de uma mesma
+  // solicitação quase sempre vão para a mesma apropriação: repetir o rateio
+  // em cada item seria custo de schema sem informação nova.
+  const rateioPedido = pedido?.apropriacoes?.length ? pedido.apropriacoes : padroes.apropriacoes;
+  let apropriacoesResolvidas = [];
+
+  if (!rateioPedido?.length) {
+    const planilha = await itensApropriaveis(buildingId, unidadeConstrutiva);
+    const temItens = planilha.success && planilha.items.length > 0;
+    pendencias.push({
+      campo: `${prefixo}apropriacoes`,
+      tipo: "Faltando",
+      message:
+        `Informe o rateio por item de orçamento, com percentuais somando 100 — no item ` +
+        `ou, se valer para todos, uma vez só no nível da solicitação. ` +
+        (temItens
+          ? comoEscolher(planilha.items, planilha.nivel)
+          : `Os itens são procurados na planilha da unidade construtiva ${unidadeConstrutiva}.`),
+      ...(temItens ? { itens_disponiveis: catalogo(planilha.items) } : {}),
+    });
+  } else {
+    const resultado = await resolverApropriacoes(
+      buildingId,
+      unidadeConstrutiva,
+      rateioPedido,
+      // Rateio herdado da solicitação: a pendência aponta para o nível dela,
+      // senão o usuário corrigiria o mesmo erro uma vez por item.
+      pedido?.apropriacoes?.length ? prefixo : ""
+    );
+    apropriacoesResolvidas = resultado.resolvidas;
+    pendencias.push(...resultado.pendencias);
+  }
+
+  if (!dadosInsumo || !(Number(pedido?.quantidade) > 0) || !apropriacoesResolvidas.length) {
+    return { pendencias };
+  }
+
+  const quantidade = Number(pedido.quantidade);
+  const item = {
+    productId: dadosInsumo.productId,
+    quantity: quantidade,
+    unitySymbol: dadosInsumo.unitySymbol,
+    buildingsApropriations: apropriacoesResolvidas.map(({ _descricao, ...a }) => a),
+    deliveryRequirements: [
+      { requirementDate: padroes.dataDeEntrega, requirementQuantity: quantidade },
+    ],
+  };
+  if (dadosInsumo.detailId !== undefined) item.detailId = dadosInsumo.detailId;
+  if (pedido.observacao) item.notes = pedido.observacao;
+
+  const retrato = {
+    resumo: `${quantidade} ${dadosInsumo.unitySymbol} de ${comoChamar}`,
+    productId: dadosInsumo.productId,
+    product: dadosInsumo.product,
+    ...(dadosInsumo.detail ? { detailId: dadosInsumo.detailId, detail: dadosInsumo.detail } : {}),
+    quantity: quantidade,
+    unit: dadosInsumo.unitySymbol,
+    apropriacoes: apropriacoesResolvidas.map((a) => ({
+      costEstimationItemReference: a.costEstimationItemReference,
+      description: a._descricao,
+      percentage: a.percentage,
+    })),
+    ...(pedido.observacao ? { observacao: pedido.observacao } : {}),
+    ...(avisoUnidade ? { avisoUnidade } : {}),
+  };
+
+  return { pendencias, item, retrato };
+}
+
+/**
+ * Cria uma solicitação de compra a partir de nomes, com prévia obrigatória.
+ *
+ * ETAPA 1 do processo de compras — ver `knowledge/purchaseProcess.js`. Criar
+ * NÃO aprova: a solicitação nasce aguardando decisão de outra pessoa.
+ *
+ * UMA SOLICITAÇÃO CARREGA VÁRIOS ITENS, que é como o Sienge a modela: o POST
+ * de itens recebe uma lista. Por isso `itens` é um array mesmo quando há um
+ * insumo só — pedir três insumos numa chamada, e não em três, é a diferença
+ * entre uma solicitação com três itens e três solicitações soltas.
+ *
+ * RESOLVE TUDO ANTES DE COBRAR QUALQUER COISA. Só a obra é bloqueante, porque
+ * insumo e planilha vivem dentro dela; do resto, devolve TODAS as pendências
+ * de uma vez, de todos os itens, cada uma nomeada com o índice do item a que
+ * pertence.
+ *
+ * `apropriacoes` no nível da solicitação vale para todo item que não trouxer o
+ * seu — itens de uma mesma solicitação quase sempre rateiam igual.
+ *
+ * `confirmar: false` (o padrão) monta o payload e devolve a prévia SEM
+ * escrever. `confirmar: true` repete a resolução — de cache, se dentro da
+ * janela — e executa.
+ *
+ * NÃO É ATÔMICO: a API cria o cabeçalho num POST e os itens em outro. Se o
+ * segundo falhar, sobra uma solicitação sem itens no Sienge, e o retorno diz
+ * qual id ficou pendente — não há DELETE de solicitação no spec.
+ *
+ * @param {object} args
+ * @param {string} args.obra nome (ou parte) da obra
+ * @param {Array<object>} args.itens insumos pedidos; cada um com `insumo`,
+ *   `quantidade` e, opcionalmente, `detalhe`, `unidade`, `apropriacoes` e
+ *   `observacao`
+ * @param {Array<{item: string, percentual: number}>} [args.apropriacoes] rateio
+ *   padrão, usado pelos itens que não trouxerem o seu
+ * @param {number} [args.unidade_construtiva=1] código da unidade construtiva
+ * @param {number} [args.dias_para_entrega=7] prazo da necessidade de entrega
+ * @param {string} [args.observacao] observação da solicitação
+ * @param {boolean} [args.confirmar=false] executa de fato
+ */
+export async function criarSolicitacaoDeCompra({
+  obra,
+  itens,
+  apropriacoes,
+  unidade_construtiva = 1,
+  dias_para_entrega = DIAS_ATE_ENTREGA_PADRAO,
+  observacao,
+  confirmar = false,
+} = {}) {
+  const solicitante = (process.env.SIENGE_SOLICITANTE || "").trim();
+  // Quem CADASTRA, que o Sienge exige à parte de quem PEDE. Na operação normal
+  // é a mesma pessoa, então o padrão é o solicitante e ninguém configura nada.
+  const cadastrante = (process.env.SIENGE_CADASTRANTE || "").trim() || solicitante;
+
+  // Departamento e categoria são opcionais no spec, mas a parametrização do
+  // Sienge pode exigi-los. Constantes da instalação, então vêm do ambiente e
+  // não custam nada no schema. Vazios, não vão no corpo.
+  const departamento = Number(process.env.SIENGE_DEPARTAMENTO) || undefined;
+  const categoria = Number(process.env.SIENGE_CATEGORIA) || undefined;
+
+  if (!solicitante) {
+    return {
+      success: false,
+      error: "SolicitanteNaoConfigurado",
+      message:
+        "SIENGE_SOLICITANTE não está configurado no .env — é o usuário do Sienge que " +
+        "assina a solicitação, e a API o exige.",
+    };
+  }
+
+  // A obra é a única pendência que impede o resto: insumo e planilha são
+  // consultados DENTRO dela.
+  if (!obra) {
+    return {
+      success: false,
+      error: "ObraNaoInformada",
+      message: "Informe a obra — insumo e apropriações são procurados dentro dela.",
+    };
+  }
+  const resolvidaObra = await resolverIdDaObraPorNome(obra);
+  if (!resolvidaObra.success) return resolvidaObra;
+  const buildingId = resolvidaObra.id;
+
+  if (!itens?.length) {
+    return {
+      success: false,
+      error: "ItensNaoInformados",
+      message:
+        "Informe ao menos um item em `itens`. Uma solicitação comporta vários insumos — " +
+        "junte todos numa chamada só, em vez de criar uma solicitação por insumo.",
+      resolvido: { obra: { id: buildingId, name: resolvidaObra.name ?? null } },
+    };
+  }
+
+  const requestDate = hoje();
+  const padroes = {
+    apropriacoes,
+    dataDeEntrega: somarDias(requestDate, Number(dias_para_entrega)),
+  };
+
+  const pendencias = [];
+  const itensDoPayload = [];
+  const retratos = [];
+
+  // Sequencial de propósito: o cache de orçamento é preenchido pelo primeiro
+  // item e reaproveitado pelos demais. Em paralelo, N itens dispararicam N
+  // varreduras da mesma planilha antes de qualquer uma terminar.
+  for (const [indice, pedido] of itens.entries()) {
+    const resultado = await resolverItemPedido(
+      buildingId,
+      unidade_construtiva,
+      pedido,
+      indice,
+      padroes
+    );
+    pendencias.push(...resultado.pendencias);
+    if (resultado.item) {
+      itensDoPayload.push(resultado.item);
+      retratos.push(resultado.retrato);
+    }
+  }
+
   const bloqueantes = pendencias.filter((p) => p.tipo !== "Aviso");
   if (bloqueantes.length) {
     return {
@@ -1069,47 +1146,30 @@ export async function criarSolicitacaoDeCompra({
       error: "DadosPendentes",
       message:
         `Nada foi gravado. ${bloqueantes.length} ponto(s) a resolver — todos abaixo, para ` +
-        `você tratar de uma vez. O que já foi identificado está em 'resolvido'.`,
+        `você tratar de uma vez. Cada pendência diz a qual item pertence. O que já foi ` +
+        `identificado está em 'resolvido'.`,
       pendencias,
-      resolvido,
+      resolvido: {
+        obra: { id: buildingId, name: resolvidaObra.name ?? null },
+        ...(retratos.length ? { itens: retratos } : {}),
+      },
     };
   }
 
-  const requestDate = hoje();
-  const item = {
-    productId: dadosInsumo.productId,
-    quantity: Number(quantidade),
-    unitySymbol: dadosInsumo.unitySymbol,
-    buildingsApropriations: apropriacoesResolvidas.map(({ _descricao, ...a }) => a),
-    deliveryRequirements: [
-      {
-        requirementDate: somarDias(requestDate, Number(dias_para_entrega)),
-        requirementQuantity: Number(quantidade),
-      },
-    ],
-  };
-  if (dadosInsumo.detailId !== undefined) item.detailId = dadosInsumo.detailId;
-
   const previa = {
-    resumo: `${item.quantity} ${item.unitySymbol} de ${comoChamar} para ${resolvidaObra.name ?? buildingId}`,
-    obra: resolvido.obra,
+    resumo:
+      `${retratos.length} ${retratos.length === 1 ? "item" : "itens"} para ` +
+      `${resolvidaObra.name ?? buildingId}: ${retratos.map((r) => r.resumo).join("; ")}`,
+    obra: { id: buildingId, name: resolvidaObra.name ?? null },
     solicitante,
     ...(cadastrante !== solicitante ? { cadastrante } : {}),
     requestDate,
-    insumo: { ...resolvido.insumo, quantity: item.quantity },
     entrega: {
-      requirementDate: item.deliveryRequirements[0].requirementDate,
-      requirementQuantity: item.quantity,
+      requirementDate: padroes.dataDeEntrega,
       observacao: `${dias_para_entrega} dias após a solicitação`,
     },
-    apropriacoes: apropriacoesResolvidas.map((a) => ({
-      buildingUnitId: a.buildingUnitId,
-      costEstimationItemReference: a.costEstimationItemReference,
-      description: a._descricao,
-      percentage: a.percentage,
-    })),
+    itens: retratos,
     ...(observacao ? { observacao } : {}),
-    ...(avisoUnidade ? { avisoUnidade } : {}),
     ...(pendencias.length ? { avisos: pendencias.map((p) => p.message) } : {}),
   };
 
@@ -1138,27 +1198,26 @@ export async function criarSolicitacaoDeCompra({
         `${cabecalho.message}. Nada foi criado — a falha foi no POST do cabeçalho, ` +
         `antes de qualquer item. Veja 'details' e 'campos_invalidos' para o motivo ` +
         `e 'payload_enviado' para o que foi mandado.`,
-      // O item não chegou a ser enviado, mas é o que iria — ajuda a conferir
-      // se o problema está nele.
-      item_que_seria_enviado: item,
+      itens_que_seriam_enviados: itensDoPayload,
     };
   }
 
   const purchaseRequestId = cabecalho.data?.id ?? cabecalho.data;
 
-  const itens = await criarItens(purchaseRequestId, [item]);
-  if (!itens.success) {
+  const itensCriados = await criarItens(purchaseRequestId, itensDoPayload);
+  if (!itensCriados.success) {
     return {
-      ...itens,
+      ...itensCriados,
       success: false,
       error: "ItensNaoInseridos",
       message:
-        `⚠️ A solicitação ${purchaseRequestId} foi CRIADA, mas o item não entrou. ` +
+        `⚠️ A solicitação ${purchaseRequestId} foi CRIADA, mas ` +
+        `${itensDoPayload.length === 1 ? "o item não entrou" : "nenhum dos itens entrou"}. ` +
         `Ela está no Sienge sem itens e precisa ser completada ou excluída pela tela — ` +
         `a API não expõe exclusão de solicitação.`,
       purchaseRequestId,
       etapa_que_falhou: "itens",
-      detalhe_do_erro: itens.details ?? itens.message,
+      detalhe_do_erro: itensCriados.details ?? itensCriados.message,
     };
   }
 
@@ -1166,6 +1225,7 @@ export async function criarSolicitacaoDeCompra({
     success: true,
     message: `✅ Solicitação de compra ${purchaseRequestId} criada: ${previa.resumo}.`,
     purchaseRequestId,
+    itemCount: itensDoPayload.length,
     proximo_passo:
       "Criar não aprova. A solicitação nasce aguardando autorização, que é decisão de " +
       "outra pessoa — ela aparecerá em compras_solicitacoes_para_aprovacao.",
