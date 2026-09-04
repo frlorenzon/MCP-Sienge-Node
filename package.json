@@ -1,6 +1,6 @@
 {
   "name": "mcp-sienge-node",
-  "version": "0.8.1",
+  "version": "0.8.2",
   "description": "Servidor MCP para a API do Sienge — consultas e operações do ERP expostas como ferramentas para assistentes de IA.",
   "type": "module",
   "main": "src/index.js",
@@ -20,9 +20,24 @@
   "keywords": [
     "mcp",
     "model-context-protocol",
+    "mcp-server",
     "sienge",
+    "sienge-api",
+    "softplan",
     "erp",
-    "construcao-civil"
+    "erp-integration",
+    "construction",
+    "construction-management",
+    "claude",
+    "claude-desktop",
+    "claude-code",
+    "anthropic",
+    "ai",
+    "ai-agent",
+    "llm-tools",
+    "construcao-civil",
+    "obras",
+    "brasil"
   ],
   "engines": {
     "node": ">=20"
