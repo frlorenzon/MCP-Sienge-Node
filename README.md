@@ -1,6 +1,6 @@
 # MCP Sienge Node
 
-> ⚠️ **ALFA — 0.7.0.** Em reescrita. A arquitetura mudou por inteiro na 0.7.0 e
+> ⚠️ **ALFA — 0.7.1.** Em reescrita. A arquitetura mudou por inteiro na série 0.7 e
 > nomes de tool, formato de retorno e variáveis de ambiente ainda vão mudar sem
 > aviso. O módulo de compras já grava no ERP: use primeiro num ambiente de
 > homologação, e leia a seção [Antes de apontar para produção](#antes-de-apontar-para-produção).
