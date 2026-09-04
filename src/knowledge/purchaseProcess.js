@@ -70,21 +70,23 @@ export const ETAPAS = [
       "um item isolado, e também reprovar. Como a aprovação é item a item, uma " +
       "solicitação pode estar parcialmente aprovada — não trate 'aprovada' como " +
       "estado único da solicitação.",
-    tools: ["compras_solicitacoes_para_aprovacao", "compras_aprovar_solicitacoes"],
+    tools: ["compras_solicitacoes_para_aprovacao", "compras_decidir_solicitacoes"],
     por_onde_comecar:
-      "compras_aprovar_solicitacoes faz as duas coisas: chamada sem argumentos " +
-      "devolve a fila de pendentes, e com 'solicitacoes' aprova — um ou mais " +
-      "itens (liste em 'itens') ou a solicitação inteira (omita 'itens'). " +
-      "Várias solicitações numa chamada só. Ela SEMPRE confere contra a fila " +
-      "real antes de gravar: id já decidido por outra pessoa é recusado, não " +
-      "aprovado às cegas. NUNCA aprove sem mostrar antes o que está pendente. " +
-      "compras_solicitacoes_para_aprovacao continua útil para só olhar a fila.",
-    cobertura_mcp: "parcial",
+      "compras_decidir_solicitacoes faz tudo: chamada sem argumentos devolve a " +
+      "fila de pendentes; com 'solicitacoes' aprova ou reprova, conforme " +
+      "'decisao'. Atinge um ou mais itens (liste em 'itens') ou a solicitação " +
+      "inteira (omita 'itens'), e aceita várias solicitações numa chamada só. " +
+      "Ela SEMPRE confere contra a fila real antes de gravar: id já decidido " +
+      "por outra pessoa é recusado. NUNCA decida sem mostrar antes o que está " +
+      "pendente. compras_solicitacoes_para_aprovacao continua útil para só " +
+      "olhar a fila. NÃO decidir também é uma saída: liste em 'itens' só o que " +
+      "o usuário decidiu e o resto continua aguardando, o que é estado normal " +
+      "do processo. Omitir 'itens' decide TODOS os pendentes da solicitação.",
+    cobertura_mcp: "completa",
     observacao_cobertura:
-      "Aprovar está coberto; REPROVAR não. reprovarSolicitacao e reprovarItem " +
-      "existem em api/purchase-requests-v1.js mas ainda não são tool — reprovar " +
-      "é pelo ERP. Aprovar é irreversível por esta API: não há endpoint que " +
-      "desfaça uma autorização.",
+      "Aprovar e reprovar estão cobertos, na solicitação inteira ou item a " +
+      "item. AS DUAS DECISÕES SÃO IRREVERSÍVEIS: a API não expõe endpoint que " +
+      "desfaça autorização nem reprovação.",
   },
   {
     etapa: 3,
@@ -287,15 +289,16 @@ export const LIMITACOES = [
     assunto: "Cobertura deste servidor MCP",
     situacao:
       "Das seis etapas, as etapas 1, 2, 4 e 6 têm tool. As de ESCRITA são duas, " +
-      "ambas na solicitação: criar (etapa 1) e aprovar (etapa 2). As demais são " +
-      "consulta: a fila de pedidos a aprovar e os pedidos pendentes de " +
-      "recebimento. Reprovar, cotar, aprovar pedido e lançar nota são pelo ERP.",
+      "ambas na solicitação: criar (etapa 1) e decidir, aprovando ou reprovando " +
+      "(etapa 2). As demais são consulta: a fila de pedidos a aprovar e os " +
+      "pedidos pendentes de recebimento. Cotar, aprovar pedido e lançar nota " +
+      "fiscal são pelo ERP.",
     status: "CONFIRMADO NO CÓDIGO",
     observacao:
-      "O assistente cria e aprova solicitação, mas NÃO reprova, NÃO cota, NÃO " +
-      "aprova pedido e NÃO lança nota fiscal por aqui. Quando o usuário pedir " +
-      "uma dessas ações, diga que o caminho é o ERP em vez de procurar uma tool " +
-      "que não existe.",
+      "O assistente cria, aprova e reprova solicitação, mas NÃO cota, NÃO aprova " +
+      "pedido e NÃO lança nota fiscal por aqui. Quando o usuário pedir uma " +
+      "dessas ações, diga que o caminho é o ERP em vez de procurar uma tool que " +
+      "não existe.",
   },
 ];
 

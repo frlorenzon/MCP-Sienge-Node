@@ -2,7 +2,7 @@
  * SPDX-FileCopyrightText: © 2026 Felipe Ribeiro Lorenzon
  * SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
  *
- * compras_aprovar_solicitacoes — etapa 2, e a segunda escrita do servidor.
+ * compras_decidir_solicitacoes — etapa 2, e a segunda escrita do servidor.
  *
  * Aprovar é irreversível por esta API: não há endpoint que desfaça. Por isso o
  * que mais se testa aqui não é o caminho feliz, e sim as recusas — aprovar o
@@ -53,9 +53,9 @@ const FILA = {
 
 async function comFila(cfg, corpo) {
   const sienge = await iniciarSienge({ ...FILA, ...cfg });
-  const { aprovarSolicitacoesDeCompra } = await carregarPurchaseClient();
+  const { decidirSolicitacoesDeCompra } = await carregarPurchaseClient();
   try {
-    await corpo(aprovarSolicitacoesDeCompra, sienge);
+    await corpo(decidirSolicitacoesDeCompra, sienge);
   } finally {
     await sienge.fechar();
   }
@@ -85,7 +85,7 @@ test("a prévia não aprova", async () => {
     assert.equal(r.success, true);
     assert.equal(r.confirmacao_pendente, true);
     assert.equal(sienge.recebido.autorizacoes.length, 0);
-    assert.match(r.previa[0].escopo, /solicitação inteira — 3 item/);
+    assert.match(r.previa[0].escopo, /solicitação inteira — todos os 3 item/);
     assert.match(r.message, /IRREVERSÍVEL/);
   });
 });
@@ -95,7 +95,7 @@ test("solicitação inteira vai no PATCH de authorize da solicitação", async (
     const r = await aprovar({ solicitacoes: [{ id: 19 }], confirmar: true });
     assert.equal(r.success, true);
     assert.deepEqual(sienge.recebido.autorizacoes, [
-      { solicitacao: 19, escopo: "inteira", corpo: null },
+      { solicitacao: 19, decisao: "aprovar", escopo: "inteira", corpo: null },
     ]);
     assert.match(r.message, /3 item\(ns\) aprovado/);
   });
@@ -223,5 +223,117 @@ test("id ausente na lista vira pendência, não erro genérico", async () => {
     const r = await aprovar({ solicitacoes: [{ itens: [1] }] });
     assert.equal(r.pendencias[0].campo, "solicitacoes[0].id");
     assert.equal(r.pendencias[0].tipo, "Faltando");
+  });
+});
+
+// ── Reprovação ───────────────────────────────────────────────────────────────
+// Mesma conferência da aprovação, porque o risco é o mesmo: reprovar o que não
+// se olhou tira do caminho um insumo de que a obra precisa, e a API também não
+// desfaz uma reprovação.
+
+test("reprovar a solicitação inteira usa a rota de disapproval", async () => {
+  await comFila({}, async (decidir, sienge) => {
+    const r = await decidir({
+      solicitacoes: [{ id: 19 }],
+      decisao: "reprovar",
+      confirmar: true,
+    });
+    assert.equal(r.success, true);
+    assert.equal(r.decisao, "reprovar");
+    assert.deepEqual(sienge.recebido.autorizacoes, [
+      { solicitacao: 19, decisao: "reprovar", escopo: "inteira", corpo: null },
+    ]);
+    assert.match(r.message, /reprovado/);
+  });
+});
+
+test("reprovar itens é um PATCH por item — o spec não tem lote", async () => {
+  await comFila({}, async (decidir, sienge) => {
+    const r = await decidir({
+      solicitacoes: [{ id: 19, itens: [1, 3] }],
+      decisao: "reprovar",
+      confirmar: true,
+    });
+    assert.equal(r.success, true);
+    assert.equal(sienge.recebido.autorizacoes.length, 2, "reprovação não aceita lote");
+    assert.deepEqual(
+      sienge.recebido.autorizacoes.map((a) => [a.itemNumber, a.decisao]),
+      [[1, "reprovar"], [3, "reprovar"]]
+    );
+  });
+});
+
+test("reprovação parcialmente gravada diz quais itens já entraram", async () => {
+  await comFila(
+    {
+      patchAutorizar: (_id, item) =>
+        item === 3
+          ? { status: 422, body: erroSienge(422, "Item já atendido por um pedido") }
+          : { status: 204 },
+    },
+    async (decidir) => {
+      const r = await decidir({
+        solicitacoes: [{ id: 19, itens: [1, 3] }],
+        decisao: "reprovar",
+        confirmar: true,
+      });
+      assert.equal(r.success, false);
+      // O item 1 JÁ foi reprovado; dizer que a solicitação inteira falhou seria mentira.
+      assert.deepEqual(r.resultados[0].itens_ja_gravados, [1]);
+      assert.equal(r.resultados[0].details, "Item já atendido por um pedido");
+    }
+  );
+});
+
+test("decisão inválida é recusada antes de qualquer chamada", async () => {
+  await comFila({}, async (decidir, sienge) => {
+    const r = await decidir({ solicitacoes: [{ id: 19 }], decisao: "arquivar", confirmar: true });
+    assert.equal(r.error, "DecisaoInvalida");
+    assert.equal(sienge.chamadas.length, 0);
+  });
+});
+
+test("a reprovação confere a fila igual à aprovação", async () => {
+  await comFila({}, async (decidir, sienge) => {
+    const r = await decidir({
+      solicitacoes: [{ id: 999 }],
+      decisao: "reprovar",
+      confirmar: true,
+    });
+    assert.equal(r.success, false);
+    assert.equal(r.pendencias[0].tipo, "NaoEstaPendente");
+    assert.equal(sienge.recebido.autorizacoes.length, 0);
+  });
+});
+
+// ── Deixar para depois ───────────────────────────────────────────────────────
+// Não decidir é uma saída legítima. O que a tool não pode fazer é deixar isso
+// invisível: decidir dois de cinco não pode parecer ter resolvido a solicitação.
+
+test("decidir parte da solicitação mostra o que continua aguardando", async () => {
+  await comFila({}, async (decidir) => {
+    const r = await decidir({ solicitacoes: [{ id: 19, itens: [1] }] });
+    const [retrato] = r.previa;
+
+    assert.equal(retrato.itens.length, 1);
+    assert.deepEqual(retrato.permanecem_pendentes.map((i) => i.itemNumber), [2, 3]);
+    assert.match(retrato.aviso_pendentes, /decidir depois é uma opção/);
+    assert.match(r.message, /2 item\(ns\) ficariam SEM decisão/);
+  });
+});
+
+test("decidir a solicitação inteira não deixa resto nem aviso", async () => {
+  await comFila({}, async (decidir) => {
+    const r = await decidir({ solicitacoes: [{ id: 19 }] });
+    assert.ok(!("permanecem_pendentes" in r.previa[0]));
+    assert.doesNotMatch(r.message, /SEM decisão/);
+  });
+});
+
+test("depois de gravar, o retorno lembra o que ficou aguardando", async () => {
+  await comFila({}, async (decidir) => {
+    const r = await decidir({ solicitacoes: [{ id: 19, itens: [2] }], confirmar: true });
+    assert.equal(r.success, true);
+    assert.match(r.message, /2 item\(ns\) continuam aguardando decisão/);
   });
 });

@@ -1,6 +1,6 @@
 # MCP Sienge Node
 
-> ⚠️ **ALFA — 0.8.0.** Em reescrita. A arquitetura mudou por inteiro na série 0.7 e
+> ⚠️ **ALFA — 0.8.1.** Em reescrita. A arquitetura mudou por inteiro na série 0.7 e
 > nomes de tool, formato de retorno e variáveis de ambiente ainda vão mudar sem
 > aviso. O módulo de compras já grava no ERP: use primeiro num ambiente de
 > homologação, e leia a seção [Antes de apontar para produção](#antes-de-apontar-para-produção).
@@ -130,7 +130,7 @@ catálogo de tools pelo ciclo de compras.
 | `compras_processo` | o processo de compras de ponta a ponta, e o que este servidor **não** cobre |
 | `compras_criar_solicitacao` | cria uma solicitação, com vários itens, a partir de nomes e com prévia antes de gravar |
 | `compras_solicitacoes_para_aprovacao` | a fila de solicitações pendentes, agrupada por solicitação |
-| `compras_aprovar_solicitacoes` | aprova itens ou solicitações inteiras, conferindo antes contra a fila real |
+| `compras_decidir_solicitacoes` | aprova ou reprova itens e solicitações, conferindo antes contra a fila real |
 | `compras_pedidos_para_aprovacao` | a fila de pedidos pendentes, com itens e fornecedor resolvidos |
 | `compras_pedidos_pendentes_recebimento` | o que foi aprovado e ainda não chegou |
 | `carregar_compras` / `carregar_financeiro` | trazem as tools do módulo |
@@ -145,13 +145,13 @@ prometa o que não faz.
 | Etapa | Cobertura |
 |---|---|
 | 1 · Solicitação | criar ✅ · consultar ❌ |
-| 2 · Aprovação da solicitação | fila ✅ · aprovar ✅ · reprovar ❌ |
+| 2 · Aprovação da solicitação | fila ✅ · aprovar ✅ · reprovar ✅ |
 | 3 · Cotação | ❌ |
 | 4 · Pedido de compra | fila ✅ |
 | 5 · Aprovação do pedido | ❌ |
 | 6 · Nota fiscal | pendências ✅ · lançar ❌ |
 
-**Criar e aprovar solicitação são as únicas escritas do servidor.** Todo o resto lê.
+**Criar e decidir solicitação são as únicas escritas do servidor.** Todo o resto lê.
 
 ## Antes de apontar para produção
 
@@ -160,9 +160,10 @@ prometa o que não faz.
 - **A criação não é atômica.** A API grava cabeçalho e itens em dois `POST`.
   Se o segundo falhar, fica uma solicitação sem itens; o retorno diz o id para
   você resolver pela tela.
-- **Aprovar não tem volta.** A API não expõe endpoint que desfaça uma
-  autorização. A tool confere contra a fila real e exige `confirmar: true`,
-  mas depois de gravado só o ERP resolve.
+- **Decidir não tem volta.** A API não expõe endpoint que desfaça uma
+  autorização nem uma reprovação. A tool confere contra a fila real e exige
+  `confirmar: true`, mas depois de gravado só o ERP resolve. Deixar um item
+  sem decisão é legítimo: liste só o que foi decidido.
 - **A prévia é o portão.** Sem `confirmar: true`, `compras_criar_solicitacao`
   resolve tudo e devolve o que seria gravado, sem gravar. Confira a unidade de
   medida e o item de orçamento ali — é o último ponto antes do ERP.

@@ -14,7 +14,7 @@ import {
   listarPedidosPendentesRecebimento,
   listarSolicitacoesParaAprovacao,
   criarSolicitacaoDeCompra,
-  aprovarSolicitacoesDeCompra,
+  decidirSolicitacoesDeCompra,
 } from "../client/purchaseClient.js";
 import { descreverProcessoDeCompras } from "../knowledge/purchaseProcess.js";
 
@@ -140,23 +140,25 @@ export const purchaseModule = {
       // Sem tool separada de listagem no caminho: chamar esta sem
       // `solicitacoes` já devolve a fila. Obrigar duas tools para "veja e
       // aprove" seria um turno a mais do modelo em toda decisão.
-      name: "compras_aprovar_solicitacoes",
+      name: "compras_decidir_solicitacoes",
       description:
-        "Aprova itens de solicitação de compra (etapa 2): um ou mais itens, ou a " +
-        "solicitação inteira. Chamada SEM `solicitacoes`, devolve o que está pendente " +
-        "de aprovação — use isso para mostrar ao usuário antes de qualquer decisão. " +
-        "Só aprova o que a fila do ERP mostra como pendente no momento: id que já foi " +
-        "decidido por outra pessoa é recusado, não aprovado às cegas. Sem " +
-        "confirmar: true devolve a prévia do que seria aprovado, sem gravar. APROVAR É " +
-        "IRREVERSÍVEL — esta API não desfaz. Aprove várias solicitações e itens numa " +
-        "chamada só, nunca uma por vez.",
+        "APROVA ou REPROVA itens de solicitação de compra (etapa 2) — escolha em " +
+        "`decisao`. Atinge um ou mais itens, ou a solicitação inteira, e aceita várias " +
+        "solicitações na mesma chamada. Chamada SEM `solicitacoes`, devolve o que está " +
+        "pendente — use isso para mostrar ao usuário antes de qualquer decisão. Só " +
+        "decide o que a fila do ERP mostra como pendente no momento: id já decidido por " +
+        "outra pessoa é recusado, não gravado às cegas. Sem confirmar: true devolve a " +
+        "prévia, sem gravar. AS DUAS DECISÕES SÃO IRREVERSÍVEIS — esta API não desfaz " +
+        "nem aprovação nem reprovação. Não decidir é uma opção legítima: liste em " +
+        "`itens` apenas o que o usuário decidiu, e o resto continua aguardando. Omitir " +
+        "`itens` decide TODOS os itens pendentes daquela solicitação — só faça isso se " +
+        "o usuário disse isso.",
       inputSchema: {
         type: "object",
         properties: {
           solicitacoes: {
             type: "array",
-            description:
-              "o que aprovar; omita para apenas listar o que está pendente",
+            description: "o que decidir; omita para apenas listar o que está pendente",
             items: {
               type: "object",
               properties: {
@@ -164,16 +166,21 @@ export const purchaseModule = {
                 itens: {
                   type: "array",
                   description:
-                    "números dos itens a aprovar; omita para aprovar a solicitação inteira",
+                    "números dos itens a decidir; omita para atingir a solicitação inteira",
                   items: { type: "number" },
                 },
               },
               required: ["id"],
             },
           },
+          decisao: {
+            type: "string",
+            enum: ["aprovar", "reprovar"],
+            description: "aprovar (padrão) ou reprovar",
+          },
           confirmar: {
             type: "boolean",
-            description: "false (padrão) devolve a prévia; true aprova no Sienge",
+            description: "false (padrão) devolve a prévia; true grava no Sienge",
           },
         },
       },
@@ -217,7 +224,7 @@ export const purchaseModule = {
     compras_processo: descreverProcessoDeCompras,
     compras_criar_solicitacao: criarSolicitacaoDeCompra,
     compras_solicitacoes_para_aprovacao: listarSolicitacoesParaAprovacao,
-    compras_aprovar_solicitacoes: aprovarSolicitacoesDeCompra,
+    compras_decidir_solicitacoes: decidirSolicitacoesDeCompra,
     compras_pedidos_para_aprovacao: listarPedidosParaAprovacao,
     compras_pedidos_pendentes_recebimento: listarPedidosPendentesRecebimento,
   },

@@ -110,15 +110,25 @@ export async function iniciarSienge(cfg = {}) {
         res.statusCode = r.status;
         return res.end(typeof r.body === "string" ? r.body : JSON.stringify(r.body));
       }
-      // PATCH de autorização: /authorize na solicitação ou em items/authorize
-      const autorizacao = url.pathname.match(/\/purchase-requests\/(\d+)\/(items\/)?authorize$/);
-      if (autorizacao) {
+      // Decisão sobre a solicitação. Quatro rotas, porque o spec dá lote só
+      // para autorizar: .../authorize, .../items/authorize, .../disapproval e
+      // .../items/{n}/disapproval — esta última, um item por chamada.
+      const decisao = url.pathname.match(
+        /\/purchase-requests\/(\d+)\/(?:items\/)?(?:(\d+)\/)?(authorize|disapproval)$/
+      );
+      if (decisao) {
+        const itemNaRota = decisao[2] ? Number(decisao[2]) : undefined;
+        const emItens = url.pathname.includes("/items/");
         recebido.autorizacoes.push({
-          solicitacao: Number(autorizacao[1]),
-          escopo: autorizacao[2] ? "itens" : "inteira",
+          solicitacao: Number(decisao[1]),
+          decisao: decisao[3] === "authorize" ? "aprovar" : "reprovar",
+          escopo: emItens ? "itens" : "inteira",
+          ...(itemNaRota !== undefined ? { itemNumber: itemNaRota } : {}),
           corpo: await corpo(),
         });
-        const r = cfg.patchAutorizar ? cfg.patchAutorizar(Number(autorizacao[1])) : { status: 204 };
+        const r = cfg.patchAutorizar
+          ? cfg.patchAutorizar(Number(decisao[1]), itemNaRota)
+          : { status: 204 };
         res.statusCode = r.status;
         return res.end(r.body ? (typeof r.body === "string" ? r.body : JSON.stringify(r.body)) : "");
       }
