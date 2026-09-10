@@ -1,19 +1,26 @@
-# MCP Sienge Node
+# Conector Sienge para IA — servidor MCP
 
-> ⚠️ **ALFA — 0.12.1.** Em reescrita. A arquitetura mudou por inteiro na série 0.7 e
-> nomes de tool, formato de retorno e variáveis de ambiente ainda vão mudar sem
-> aviso. O módulo de compras já **grava no ERP**: use primeiro num ambiente de
-> homologação, e leia a seção [Antes de apontar para produção](#antes-de-apontar-para-produção).
+**Servidor MCP ([Model Context Protocol](https://modelcontextprotocol.io)) que
+conecta o Claude — Claude Code, Claude Desktop ou qualquer cliente MCP — à API
+do [Sienge](https://www.sienge.com.br), o ERP de construção civil e incorporação
+da Softplan.** Integração **não oficial**, escrita por quem usa o ERP.
 
-Servidor [MCP](https://modelcontextprotocol.io) para a API do
-[Sienge](https://www.sienge.com.br) — expõe consultas e operações do ERP como
-ferramentas que um assistente de IA pode chamar.
-
-JavaScript puro (ESM), sem etapa de build e sem dependência além do SDK do MCP.
+Compras, contratos de suprimentos e medições viram ferramentas que o assistente
+chama direto: consultar um contrato com valor, prazo e saldo, baixar os anexos,
+ver a fila de aprovação, criar uma solicitação de compra. Tudo **em português e
+por nome** — "obra iu.06", "tubo de esgoto", "instalações hidrossanitárias" —,
+com os códigos internos resolvidos dentro do servidor.
 
 ```bash
 npx -y mcp-sienge-node
 ```
+
+JavaScript puro (ESM), sem etapa de build e sem dependência além do SDK do MCP.
+
+> ⚠️ **ALFA — 0.12.2.** Em reescrita. A arquitetura mudou por inteiro na série 0.7 e
+> nomes de tool, formato de retorno e variáveis de ambiente ainda vão mudar sem
+> aviso. O módulo de compras já **grava no ERP**: use primeiro num ambiente de
+> homologação, e leia a seção [Antes de apontar para produção](#antes-de-apontar-para-produção).
 
 ## Instalação no Claude Desktop
 
