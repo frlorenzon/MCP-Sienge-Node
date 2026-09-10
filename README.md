@@ -1,8 +1,8 @@
 # MCP Sienge Node
 
-> ⚠️ **ALFA — 0.9.1.** Em reescrita. A arquitetura mudou por inteiro na série 0.7 e
+> ⚠️ **ALFA — 0.11.1.** Em reescrita. A arquitetura mudou por inteiro na série 0.7 e
 > nomes de tool, formato de retorno e variáveis de ambiente ainda vão mudar sem
-> aviso. O módulo de compras já grava no ERP: use primeiro num ambiente de
+> aviso. Compras e contratos já **gravam no ERP**: use primeiro num ambiente de
 > homologação, e leia a seção [Antes de apontar para produção](#antes-de-apontar-para-produção).
 
 Servidor [MCP](https://modelcontextprotocol.io) para a API do
@@ -66,6 +66,7 @@ na API.
 | `SIENGE_API_KEY` | uma das duas | Bearer Token |
 | `SIENGE_USERNAME` + `SIENGE_PASSWORD` | uma das duas | Basic Auth |
 | `SIENGE_PROFILE` | — | módulos carregados já na subida. Vazio = só o núcleo |
+| `SIENGE_PASTA_ANEXOS` | — | pasta onde `contratos_baixar_anexos` salva os arquivos |
 | `SIENGE_BASE_URL` | — | trocar o host da API |
 
 ### Para criar solicitações de compra
@@ -115,7 +116,8 @@ depender do carregamento dinâmico.
 ## Estado
 
 Reescrita em andamento. A 0.7.0 trocou a arquitetura inteira e recomeçou o
-catálogo de tools pelo ciclo de compras.
+catálogo de tools pelo ciclo de compras; a 0.10.0 abriu o de contratos de
+suprimentos, que é onde a obra contrata serviço e paga por medição.
 
 | Módulo | Tools | Estado |
 |---|---|---|
@@ -163,8 +165,34 @@ prometa o que não faz.
 | 5 · Aprovação do pedido | fila ✅ · aprovar ✅ · reprovar ✅ |
 | 6 · Nota fiscal | pendências ✅ · lançar ❌ |
 
-**As escritas do servidor são três:** criar solicitação, decidir solicitação e
-decidir pedido de compra. Todo o resto lê.
+**As escritas do servidor são seis:** criar solicitação, decidir solicitação,
+decidir pedido de compra, decidir contrato, criar medição e decidir medição.
+Todo o resto lê.
+
+### O ciclo do contrato de suprimentos
+
+Compra e contrato são caminhos diferentes para gastar dinheiro na obra. A
+compra termina numa **entrega**; o contrato, numa **medição** — alguém confere
+quanto do serviço foi executado, e é isso que vira conta a pagar.
+
+| Etapa | Cobertura |
+|---|---|
+| Contrato | consultar ✅ · autorizar ✅ · reprovar ✅ · criar ❌ |
+| Anexos do contrato | baixar ✅ · anexar ❌ |
+| Medição | consultar ✅ · criar ✅ · autorizar ✅ · reprovar ✅ |
+| Liberação (o título a pagar) | consultar ✅ · liberar ❌ — a API não expõe |
+| Aditivos | consultar ✅ |
+
+Três coisas deste recurso não se adivinham, e as tools já as tratam por dentro:
+
+- **O contrato não tem id.** A identidade é o par documento + número (`CTS`,
+  `325`), e ninguém sabe de cabeça que o documento é `CTS`. As tools aceitam o
+  número solto, parte do objeto ou só a obra.
+- **Não existe listagem sem período.** Toda busca varre uma janela de 4 anos e
+  **diz na resposta** qual janela varreu — ausente na janela não é inexistente.
+- **Não existe saldo de item de contrato.** O saldo que a prévia de medição
+  mostra é derivado da última medição e vai rotulado como tal; ele ignora
+  aditivo posterior, então estourá-lo é aviso, nunca bloqueio.
 
 ## Antes de apontar para produção
 
@@ -187,6 +215,16 @@ decidir pedido de compra. Todo o resto lê.
   limitação deste servidor: é o endpoint que não executa o gatilho que a tela
   executa. O pedido fica aprovado e ninguém é avisado — combine o envio por
   fora. A tool repete esse aviso em toda resposta de aprovação.
+- **Criar medição não tem volta.** A API não expõe exclusão nem alteração de
+  medição — criada errada, só a tela do Sienge resolve. `vencimento` não tem
+  padrão de propósito: é a data em que o título nasce vencendo, e chutar uma
+  data de vencimento é chutar dinheiro.
+- **Autorizar contrato ou medição também é definitivo**, pela mesma razão das
+  decisões de compra. O aviso ao responsável só sai se o ERP estiver
+  parametrizado para sempre enviar.
+- **Baixar anexo escreve no seu disco, não no ERP.** Os arquivos vão para
+  `SIENGE_PASTA_ANEXOS`, numa subpasta por contrato. A tool grava os bytes como
+  vieram e **não lê o conteúdo** — não espere dela um resumo do PDF.
 - **Não há trilha de auditoria.** A versão anterior gravava um log de escrita;
   essa parte ainda não foi reescrita.
 
@@ -206,8 +244,8 @@ npm start
 npm test
 ```
 
-49 testes com o runner nativo do Node, sem dependência nenhuma. **Nenhum toca a
-API do Sienge** — sobem um servidor HTTP local que responde nos schemas de
+121 testes com o runner nativo do Node, sem dependência nenhuma. **Nenhum toca
+a API do Sienge** — sobem um servidor HTTP local que responde nos schemas de
 `spec/openapi.yaml`, então rodam offline e não consomem cota.
 
 Testar contra HTTP de verdade, em vez de dublar `makeRequest`, é o que faz a
@@ -225,14 +263,19 @@ src/
 ├── api/                     um arquivo por recurso REST do Sienge
 │   ├── purchase-requests-v1.js
 │   ├── purchase-orders-v1.js
+│   ├── supply-contracts-v1.js
+│   ├── supply-contracts-measurements-v1.js
 │   ├── building-cost-estimations-v1.js
 │   ├── creditor-v1.js
 │   └── cost-center-v1.js
 ├── client/
-│   ├── siengeClient.js      o único ponto que fala HTTP com o Sienge
-│   └── purchaseClient.js    compõe as funções de api/ no que uma pergunta de
-│                            negócio precisa: resolve nomes, agrupa, projeta
-├── modules/                 o que vira tool: core, purchase, financial
+│   ├── siengeClient.js      o único ponto que fala HTTP com o Sienge —
+│   │                        makeRequest para JSON, baixarArquivo para bytes
+│   ├── purchaseClient.js    compõe as funções de api/ no que uma pergunta de
+│   │                        negócio precisa: resolve nomes, agrupa, projeta
+│   └── supplyContractClient.js   idem, para contratos e medições
+├── modules/                 o que vira tool: core, purchase, supplyContract,
+│                            financial
 └── knowledge/               o processo de compras (conhecimento, não API)
 
 spec/openapi.yaml            a especificação publicada do Sienge
