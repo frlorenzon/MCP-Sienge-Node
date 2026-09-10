@@ -1,8 +1,8 @@
 # MCP Sienge Node
 
-> ⚠️ **ALFA — 0.11.1.** Em reescrita. A arquitetura mudou por inteiro na série 0.7 e
+> ⚠️ **ALFA — 0.12.0.** Em reescrita. A arquitetura mudou por inteiro na série 0.7 e
 > nomes de tool, formato de retorno e variáveis de ambiente ainda vão mudar sem
-> aviso. Compras e contratos já **gravam no ERP**: use primeiro num ambiente de
+> aviso. O módulo de compras já **grava no ERP**: use primeiro num ambiente de
 > homologação, e leia a seção [Antes de apontar para produção](#antes-de-apontar-para-produção).
 
 Servidor [MCP](https://modelcontextprotocol.io) para a API do
@@ -99,7 +99,7 @@ demanda:
 ```
 subida                 3 tools    diagnóstico e autenticação
 + carregar_compras     7 tools    solicitações e pedidos
-+ carregar_contratos   7 tools    contratos de suprimentos e medições
++ carregar_contratos   2 tools    contratos de suprimentos
 ```
 
 Para uma operação que sempre usa os mesmos módulos,
@@ -123,7 +123,7 @@ suprimentos, que é onde a obra contrata serviço e paga por medição.
 |---|---|---|
 | `nucleo` | 3 | ✅ diagnóstico e autenticação |
 | `compras` | 7 | 🔨 solicitação e pedido; falta cotação e nota fiscal |
-| `contratos` | 7 | 🔨 contrato, medição e download de anexo; falta anexar |
+| `contratos` | 2 | 🔨 consulta e anexos; o resto do ciclo está pronto em `client/`, sem tool |
 | `financeiro` | 1 | ⚠️ apenas um esqueleto de teste, não lê nada do ERP |
 
 ### As tools de hoje
@@ -140,13 +140,8 @@ suprimentos, que é onde a obra contrata serviço e paga por medição.
 | `compras_pedidos_para_aprovacao` | a fila de pedidos pendentes, com itens e fornecedor resolvidos |
 | `compras_decidir_pedidos` | aprova ou reprova pedidos de compra, com o valor na prévia — **não envia e-mail**, ver abaixo |
 | `compras_pedidos_pendentes_recebimento` | o que foi aprovado e ainda não chegou |
-| `contratos_listar` | contratos de suprimentos por obra, período e situação |
 | `contratos_detalhar` | tudo de um contrato numa chamada: fornecedor, valor, prazo, saldo e os itens com preço unitário |
-| `contratos_decidir` | autoriza ou reprova contratos, conferindo antes contra a fila real |
 | `contratos_baixar_anexos` | salva os anexos do contrato numa pasta local e devolve o caminho |
-| `contratos_medicoes` | o histórico de medições, com os títulos gerados por cada uma |
-| `contratos_criar_medicao` | mede itens do contrato a partir de nomes, com prévia antes de gravar |
-| `contratos_decidir_medicoes` | autoriza ou reprova medições, conferindo antes contra a fila real |
 | `carregar_compras` / `carregar_contratos` / `carregar_financeiro` | trazem as tools do módulo |
 | `descarregar_modulos` | libera o contexto dos módulos carregados |
 
@@ -165,23 +160,34 @@ prometa o que não faz.
 | 5 · Aprovação do pedido | fila ✅ · aprovar ✅ · reprovar ✅ |
 | 6 · Nota fiscal | pendências ✅ · lançar ❌ |
 
-**As escritas do servidor são seis:** criar solicitação, decidir solicitação,
-decidir pedido de compra, decidir contrato, criar medição e decidir medição.
-Todo o resto lê.
+As escritas desta etapa são três: criar solicitação, decidir solicitação e
+decidir pedido de compra.
 
 ### O ciclo do contrato de suprimentos
 
-Compra e contrato são caminhos diferentes para gastar dinheiro na obra. A
-compra termina numa **entrega**; o contrato, numa **medição** — alguém confere
-quanto do serviço foi executado, e é isso que vira conta a pagar.
+**Outro módulo, outro ciclo** — `contratos_*`, carregado à parte por
+`carregar_contratos`, sem nenhuma dependência de compras. Não é a continuação
+do processo de compra: é o caminho alternativo. A compra termina numa
+**entrega**; o contrato, numa **medição** — alguém confere quanto do serviço
+foi executado, e é isso que vira conta a pagar.
 
-| Etapa | Cobertura |
-|---|---|
-| Contrato | consultar ✅ · autorizar ✅ · reprovar ✅ · criar ❌ |
-| Anexos do contrato | baixar ✅ · anexar ❌ |
-| Medição | consultar ✅ · criar ✅ · autorizar ✅ · reprovar ✅ |
-| Liberação (o título a pagar) | consultar ✅ · liberar ❌ — a API não expõe |
-| Aditivos | consultar ✅ |
+O módulo expõe **duas tools**: `contratos_detalhar` e
+`contratos_baixar_anexos`. O resto do ciclo já está implementado e testado em
+`client/supplyContractClient.js`, sem tool declarada — porque tool parada custa
+tokens em toda mensagem, e porque três dessas funções gravam no ERP.
+
+| Etapa | Client | Tool |
+|---|---|---|
+| Contrato — consultar | ✅ | ✅ `contratos_detalhar` |
+| Contrato — listar por obra e período | ✅ | — |
+| Anexos — baixar | ✅ | ✅ `contratos_baixar_anexos` |
+| Anexos — anexar | ❌ | — |
+| Contrato — autorizar e reprovar | ✅ | — ✏️ grava |
+| Medição — consultar | ✅ | — |
+| Medição — criar | ✅ | — ✏️ grava |
+| Medição — autorizar e reprovar | ✅ | — ✏️ grava |
+| Liberação (o título a pagar) | ✅ consultar · ❌ liberar — a API não expõe | — |
+| Aditivos — consultar | ✅ | — |
 
 Três coisas deste recurso não se adivinham, e as tools já as tratam por dentro:
 
@@ -193,6 +199,10 @@ Três coisas deste recurso não se adivinham, e as tools já as tratam por dentr
 - **Não existe saldo de item de contrato.** O saldo que a prévia de medição
   mostra é derivado da última medição e vai rotulado como tal; ele ignora
   aditivo posterior, então estourá-lo é aviso, nunca bloqueio.
+
+**Nenhuma escrita de contrato está exposta como tool hoje** — as três existem
+no client e esperam ser pedidas. As escritas ativas do servidor continuam sendo
+as três de compras.
 
 ## Antes de apontar para produção
 
@@ -215,13 +225,6 @@ Três coisas deste recurso não se adivinham, e as tools já as tratam por dentr
   limitação deste servidor: é o endpoint que não executa o gatilho que a tela
   executa. O pedido fica aprovado e ninguém é avisado — combine o envio por
   fora. A tool repete esse aviso em toda resposta de aprovação.
-- **Criar medição não tem volta.** A API não expõe exclusão nem alteração de
-  medição — criada errada, só a tela do Sienge resolve. `vencimento` não tem
-  padrão de propósito: é a data em que o título nasce vencendo, e chutar uma
-  data de vencimento é chutar dinheiro.
-- **Autorizar contrato ou medição também é definitivo**, pela mesma razão das
-  decisões de compra. O aviso ao responsável só sai se o ERP estiver
-  parametrizado para sempre enviar.
 - **Baixar anexo escreve no seu disco, não no ERP.** Os arquivos vão para
   `SIENGE_PASTA_ANEXOS`, numa subpasta por contrato. A tool grava os bytes como
   vieram e **não lê o conteúdo** — não espere dela um resumo do PDF.
@@ -244,7 +247,7 @@ npm start
 npm test
 ```
 
-121 testes com o runner nativo do Node, sem dependência nenhuma. **Nenhum toca
+120 testes com o runner nativo do Node, sem dependência nenhuma. **Nenhum toca
 a API do Sienge** — sobem um servidor HTTP local que responde nos schemas de
 `spec/openapi.yaml`, então rodam offline e não consomem cota.
 

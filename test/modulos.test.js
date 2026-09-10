@@ -87,38 +87,29 @@ test("o processo de compras descreve as seis etapas e a cobertura de cada uma", 
   }
 });
 
-test("as tools de escrita de contratos têm o portão da prévia", () => {
-  // Sem `confirmar` no schema, o modelo não tem como pedir a gravação — e,
-  // pior, pode concluir que a chamada normal já grava. As três escritas do
-  // módulo são irreversíveis pela API.
-  for (const nome of ["contratos_decidir", "contratos_criar_medicao", "contratos_decidir_medicoes"]) {
+test("escrita de contrato só sobe como tool se tiver o portão da prévia", () => {
+  // O módulo hoje expõe só as duas tools de leitura que foram pedidas. As
+  // funções de escrita existem no client e ainda não viraram tool — quando
+  // virarem, cada uma precisa nascer com `confirmar`, senão o modelo não tem
+  // como pedir a gravação e, pior, pode concluir que a chamada normal já
+  // grava. As três são irreversíveis pela API do Sienge.
+  const ESCRITAS = ["contratos_decidir", "contratos_criar_medicao", "contratos_decidir_medicoes"];
+
+  for (const nome of ESCRITAS) {
     const tool = supplyContractModule.tools.find((t) => t.name === nome);
+    if (!tool) continue; // ainda não exposta — o teste arma sozinho quando for
     assert.ok(tool.inputSchema.properties.confirmar, `${nome} precisa de confirmar`);
   }
 });
 
-test("contratos_criar_medicao recebe uma LISTA de itens", () => {
-  const tool = supplyContractModule.tools.find((t) => t.name === "contratos_criar_medicao");
-  assert.deepEqual(tool.inputSchema.required, ["obra", "itens"]);
-
-  const itens = tool.inputSchema.properties.itens;
-  assert.equal(itens.type, "array", "uma medição comporta vários itens do contrato");
-  // Exigir a quantidade impediria a chamada que descobre a unidade e o saldo.
-  assert.deepEqual(itens.items.required, ["item"]);
-  assert.ok(itens.items.properties.quantidade);
-});
-
-test("as decisões de contrato aceitam LOTE, não um alvo por chamada", () => {
-  for (const [nome, campo] of [
-    ["contratos_decidir", "contratos"],
-    ["contratos_decidir_medicoes", "medicoes"],
-  ]) {
-    const tool = supplyContractModule.tools.find((t) => t.name === nome);
-    assert.equal(tool.inputSchema.properties[campo].type, "array", `${nome}.${campo}`);
-    // O campo não pode ser obrigatório: sem ele, a tool devolve a fila — é o
-    // modo que impede decidir sem ver.
-    assert.ok(!(tool.inputSchema.required ?? []).includes(campo), `${nome}: ${campo} não é obrigatório`);
-  }
+test("nenhuma tool de contrato grava sem ter sido pedida", () => {
+  // Guarda de escopo: as duas tools são as que foram pedidas. Acrescentar
+  // outra é decisão de produto, não efeito colateral de refatoração — e três
+  // das candidatas gravam em produção.
+  assert.deepEqual(
+    supplyContractModule.tools.map((t) => t.name),
+    ["contratos_detalhar", "contratos_baixar_anexos"]
+  );
 });
 
 test("todo módulo registrado no roteador carrega de verdade", async () => {
