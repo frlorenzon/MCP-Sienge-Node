@@ -1,9 +1,10 @@
-# Conector Sienge para IA — servidor MCP
+# Conector Sienge para Claude — servidor MCP do ERP Sienge
 
-**Servidor MCP ([Model Context Protocol](https://modelcontextprotocol.io)) que
-conecta o Claude — Claude Code, Claude Desktop ou qualquer cliente MCP — à API
-do [Sienge](https://www.sienge.com.br), o ERP de construção civil e incorporação
-da Softplan.** Integração **não oficial**, escrita por quem usa o ERP.
+**Servidor [MCP](https://modelcontextprotocol.io) que põe o
+[Sienge](https://www.sienge.com.br) dentro do Claude** — Claude Code, Claude
+Desktop ou qualquer cliente MCP conversando com a API do Sienge, o ERP de
+construção civil e incorporação da Softplan. Integração **não oficial**,
+escrita por quem usa o ERP.
 
 Compras, contratos de suprimentos e medições viram ferramentas que o assistente
 chama direto: consultar um contrato com valor, prazo e saldo, baixar os anexos,

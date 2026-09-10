@@ -1,7 +1,7 @@
 {
   "name": "mcp-sienge-node",
   "version": "0.12.2",
-  "description": "Conector Sienge para IA: servidor MCP (Model Context Protocol) que liga o Claude ao ERP Sienge — compras, contratos de suprimentos e medições. Não oficial.",
+  "description": "Conector Sienge para Claude: servidor MCP que põe o ERP Sienge dentro do Claude Code e do Claude Desktop — compras, contratos de suprimentos e medições. Não oficial.",
   "type": "module",
   "main": "src/index.js",
   "bin": {
@@ -22,6 +22,8 @@
     "model-context-protocol",
     "mcp-server",
     "sienge",
+    "claude-sienge",
+    "sienge-claude",
     "sienge-api",
     "softplan",
     "erp",
