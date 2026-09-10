@@ -44,16 +44,13 @@ export const purchaseModule = {
       name: "compras_criar_solicitacao",
       description:
         "Cria uma solicitação de compra (etapa 1) a partir de NOMES — obra, insumo, " +
-        "detalhe e itens de orçamento —, resolvendo todos os códigos internamente. " +
-        "Não peça ids ao usuário nem os busque com outras tools. UMA solicitação " +
-        "comporta VÁRIOS insumos: mande todos em `itens` numa chamada só, nunca uma " +
-        "chamada por insumo — isso criaria várias solicitações soltas. Sem " +
-        "confirmar: true ela apenas devolve a prévia, sem gravar; mostre a prévia, " +
-        "obtenha o aval do usuário e chame de novo com os MESMOS argumentos mais " +
-        "confirmar: true. Nome ambíguo ou dado faltando volta com todas as " +
-        "pendências de uma vez, cada uma dizendo a qual item pertence. NUNCA invente " +
-        "a unidade de medida: chame sem quantidade e a tool responde em que unidade " +
-        "cada insumo é solicitado. Criar NÃO aprova.",
+        "detalhe, item de orçamento —, resolvendo os códigos internamente; não peça " +
+        "nem busque ids. VÁRIOS insumos vão em `itens` numa chamada só: uma chamada " +
+        "por insumo cria solicitações soltas. Sem `confirmar: true` devolve só a " +
+        "prévia; mostre-a, obtenha o aval e repita a chamada com os MESMOS " +
+        "argumentos mais `confirmar: true`. Nome ambíguo ou dado faltando volta com " +
+        "todas as pendências de uma vez. NUNCA invente a unidade de medida. Criar " +
+        "NÃO aprova.",
       inputSchema: {
         type: "object",
         properties: {
@@ -144,16 +141,13 @@ export const purchaseModule = {
       name: "compras_decidir_solicitacoes",
       description:
         "APROVA ou REPROVA itens de solicitação de compra (etapa 2) — escolha em " +
-        "`decisao`. Atinge um ou mais itens, ou a solicitação inteira, e aceita várias " +
-        "solicitações na mesma chamada. Chamada SEM `solicitacoes`, devolve o que está " +
-        "pendente — use isso para mostrar ao usuário antes de qualquer decisão. Só " +
-        "decide o que a fila do ERP mostra como pendente no momento: id já decidido por " +
-        "outra pessoa é recusado, não gravado às cegas. Sem confirmar: true devolve a " +
-        "prévia, sem gravar. AS DUAS DECISÕES SÃO IRREVERSÍVEIS — esta API não desfaz " +
-        "nem aprovação nem reprovação. Não decidir é uma opção legítima: liste em " +
-        "`itens` apenas o que o usuário decidiu, e o resto continua aguardando. Omitir " +
-        "`itens` decide TODOS os itens pendentes daquela solicitação — só faça isso se " +
-        "o usuário disse isso.",
+        "`decisao`. Aceita várias solicitações e vários itens na mesma chamada. Sem " +
+        "`solicitacoes` devolve os pendentes; mostre-os ao usuário antes de qualquer " +
+        "decisão. Só decide o que a fila do ERP mostra pendente: id já decidido por " +
+        "outra pessoa é recusado, não gravado às cegas. Sem `confirmar: true` devolve " +
+        "só a prévia. AS DUAS DECISÕES SÃO IRREVERSÍVEIS. Liste em `itens` apenas o " +
+        "que o usuário decidiu — o resto continua aguardando; omitir `itens` decide " +
+        "TODOS os pendentes daquela solicitação.",
       inputSchema: {
         type: "object",
         properties: {
@@ -205,18 +199,17 @@ export const purchaseModule = {
       // a via.
       name: "compras_decidir_pedidos",
       description:
-        "APROVA ou REPROVA PEDIDOS de compra (etapa 5) — escolha em `decisao`. Pedido é a " +
-        "ordem ao FORNECEDOR, com preço e compromisso financeiro; para a solicitação " +
-        "interna sem preço, a tool é compras_decidir_solicitacoes. Aceita vários pedidos " +
-        "na mesma chamada. Chamada SEM `pedidos`, devolve a fila — use isso para mostrar " +
-        "valor e fornecedor ao usuário antes de qualquer decisão. Só decide o que a fila " +
-        "mostra como pendente, e ela enxerga apenas os 100 últimos pedidos: id ausente " +
-        "pode estar pendente fora da janela, não afirme que já foi decidido. Sem " +
-        "confirmar: true devolve a prévia, sem gravar. AS DUAS DECISÕES SÃO IRREVERSÍVEIS. " +
-        "ATENÇÃO — BUG DO SIENGE: aprovar por esta API NÃO dispara e-mail nenhum (nem ao " +
-        "fornecedor, nem ao usuário, nem à obra), mesmo com o envio automático " +
-        "parametrizado no ERP; a tela envia, o endpoint não. Avise o usuário em TODA " +
-        "aprovação e combine o envio por fora.",
+        "APROVA ou REPROVA PEDIDOS de compra (etapa 5) — escolha em `decisao`. Pedido é " +
+        "a ordem ao FORNECEDOR, com preço e compromisso financeiro; a solicitação " +
+        "interna sem preço é compras_decidir_solicitacoes. Aceita vários pedidos na " +
+        "mesma chamada. Sem `pedidos` devolve a fila; mostre valor e fornecedor ao " +
+        "usuário antes de decidir. A fila enxerga só os 100 últimos: id ausente pode " +
+        "estar pendente fora da janela — não afirme que já foi decidido. Sem " +
+        "`confirmar: true` devolve só a prévia. AS DUAS DECISÕES SÃO IRREVERSÍVEIS. " +
+        "ATENÇÃO — BUG DO SIENGE: aprovar por esta API NÃO dispara e-mail (nem ao " +
+        "fornecedor, nem ao usuário, nem à obra), mesmo com o envio parametrizado no " +
+        "ERP: a tela envia, o endpoint não. Avise em TODA aprovação e combine o envio " +
+        "por fora.",
       inputSchema: {
         type: "object",
         properties: {
