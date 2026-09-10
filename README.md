@@ -1,6 +1,6 @@
 # MCP Sienge Node
 
-> ⚠️ **ALFA — 0.12.0.** Em reescrita. A arquitetura mudou por inteiro na série 0.7 e
+> ⚠️ **ALFA — 0.12.1.** Em reescrita. A arquitetura mudou por inteiro na série 0.7 e
 > nomes de tool, formato de retorno e variáveis de ambiente ainda vão mudar sem
 > aviso. O módulo de compras já **grava no ERP**: use primeiro num ambiente de
 > homologação, e leia a seção [Antes de apontar para produção](#antes-de-apontar-para-produção).
@@ -203,6 +203,84 @@ Três coisas deste recurso não se adivinham, e as tools já as tratam por dentr
 **Nenhuma escrita de contrato está exposta como tool hoje** — as três existem
 no client e esperam ser pedidas. As escritas ativas do servidor continuam sendo
 as três de compras.
+
+## Como `contratos_detalhar` resolve um contrato
+
+Vale abrir esta, porque quase tudo que ela faz existe para contornar um jeito
+de a resposta sair errada **sem erro nenhum**.
+
+A informação está espalhada por cinco endpoints: o cabeçalho num, o saldo
+noutro, o fornecedor no cadastro de credores, as obras num terceiro, os itens
+num quarto — e os itens ainda vivem por planilha. Encadear isso como tools
+faria **cada passo reenviar a conversa inteira** ao modelo. Por isso é uma
+chamada só, e a tradução acontece no servidor, onde é de graça.
+
+**1 · De quem estamos falando.** O contrato não tem id: a identidade é o par
+documento + número (`CTS`, `325`), e ninguém sabe de cabeça que o documento é
+`CTS`. Quatro caminhos, do mais barato ao mais caro:
+
+| Você informa | O que acontece |
+|---|---|
+| documento **e** número | um GET direto, confirma que existe |
+| só o número | varre a janela e casa pelo número |
+| um texto (`"instalações hidrossanitárias"`) | varre a janela e casa pelo objeto |
+| só a obra | varre a janela dela; havendo um contrato só, resolve |
+
+A obra vem antes, por nome, descartando os cadastros marcados "NÃO USAR" —
+obra desativada que a conta mantém por histórico.
+
+**2 · A janela.** A API não lista contrato sem período; não existe "todos". A
+varredura usa **4 anos até hoje e devolve, na resposta, qual janela varreu**.
+Sem isso, "não achei" vira "não existe", que é outra coisa — a mensagem diz
+onde olhou e que `desde` amplia.
+
+**3 · Quando o nome não casa, a tool não adivinha.** O nome do cadastro
+raramente é o nome que a pessoa usa: em produção, "instalações
+hidrossanitárias" está gravado como *"SERVIÇO DE INSTALAÇÃO HIDRAULICA,
+ESGOTO, GÁS E INCÊNDIO"*. Isso é sinonímia de obra, não de grafia, e nenhuma
+regra de texto liga os dois sem chutar. Então a resposta traz **os contratos da
+janela ordenados por relevância**, cada um com o seu par — a obra IU.06 tem 75
+contratos em quatro anos, e ordenar por data escondia justamente o certo.
+
+**4 · O cabeçalho é buscado de novo**, mesmo quando o passo 1 já achou o
+contrato na listagem: só o GET de um contrato devolve `materialBalance` e
+`laborBalance`. A listagem não traz saldo.
+
+**5 · A obra tem dois ids, e o óbvio é o errado.**
+`/supply-contracts/buildings` devolve `buildingID` (interno) e
+`buildingIdView` (código no Sienge). Só o View é aceito nos demais endpoints:
+
+```
+/supply-contracts/items?buildingId=21   → 404 "Obra 21 não encontrada"
+/supply-contracts/all?buildingId=21     → 200 com 85 contratos de OUTRA obra
+/supply-contracts/all?buildingId=20     → 200 com os 75 contratos certos
+```
+
+O 404 aparece; os 85 contratos errados, não. Conferido contra produção — é a
+única falha aqui capaz de produzir uma resposta confiante e completamente
+errada.
+
+**6 · Os itens saem por planilha** (obra × unidade construtiva); não existe
+"todos os itens do contrato". `incluir_itens: false` corta essas N chamadas
+quando a pergunta não envolve item.
+
+### O que a tool calcula, porque o Sienge não devolve pronto
+
+O ERP guarda material e mão de obra sempre separados — eles medem e pagam
+separado. Ninguém pergunta assim.
+
+| Campo | De onde sai |
+|---|---|
+| `valor_total` | material + mão de obra |
+| `saldo_total` | saldo de material + saldo de mão de obra |
+| `prazo` | início, fim e `dias_restantes` (negativo se já venceu) |
+| `precoUnitario` | preço de material + de mão de obra, por item |
+| `valorTotal` | quantidade × preço unitário |
+| `mensuravel` | derivado: item sem `resourceId` nem `workItemId` é agrupador |
+
+Uma regra atravessa todas: **ausência não vira zero**. `saldo_total` some da
+resposta quando a API não mandou o campo, em vez de virar `0` — saldo zero é
+"acabou", saldo ausente é "não sei", e a listagem nunca traz saldo.
 
 ## Antes de apontar para produção
 
