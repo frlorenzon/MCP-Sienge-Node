@@ -100,19 +100,48 @@ Lista completa e comentada em [`.env.example`](.env.example).
 
 ## Como o catálogo é carregado
 
-O catálogo de tools é reenviado ao modelo a cada mensagem, então tool parada é
-custo recorrente. O servidor sobe só com o núcleo, e os módulos entram sob
-demanda:
+**A descrição e o schema de cada tool são reenviados ao modelo a cada
+mensagem.** Não é uma vez na conexão: é em toda pergunta, junto com o histórico
+inteiro da conversa. Uma tool que ninguém vai usar naquela conversa continua
+sendo paga, mensagem após mensagem — e um catálogo grande também piora a
+escolha do modelo, que passa a decidir entre dezenas de opções parecidas.
 
-```
-subida                 3 tools    diagnóstico e autenticação
-+ carregar_compras     7 tools    solicitações e pedidos
-+ carregar_contratos   2 tools    contratos de suprimentos
-```
+Por isso o servidor sobe **só com o núcleo** e o resto entra sob demanda,
+agrupado por assunto:
+
+| Módulo | Carrega com | Tools | Assunto |
+|---|---|---|---|
+| núcleo | *(sempre carregado)* | 3 | diagnóstico, credencial, conexão |
+| `compras` | `carregar_compras` | 7 | solicitação, pedido, aprovação, recebimento |
+| `contratos` | `carregar_contratos` | 2 | contrato de suprimentos e seus anexos |
+| `financeiro` | `carregar_financeiro` | 1 | contas a pagar e receber *(esqueleto)* |
+
+Na prática: alguém pergunta **"quais pedidos estão esperando aprovação?"**. O
+assistente vê no catálogo apenas as três tools do núcleo e as ferramentas
+`carregar_*`, cada uma com uma linha dizendo o que traz. Ele chama
+`carregar_compras`, as sete tools de compras entram, e a conversa segue. **As
+tools de contratos e de financeiro nunca são carregadas** — e nunca são pagas.
+
+O que isso poupa, medido no catálogo real deste servidor:
+
+| Sessão | O que fica carregado | Custo por mensagem |
+|---|---|---|
+| só compras | núcleo + compras | ~8,4 KB |
+| só contratos | núcleo + contratos | ~3,2 KB |
+| tudo carregado | núcleo + os três módulos | ~11 KB |
+
+A diferença parece pequena em bytes e não é: ela é **multiplicada pelo número
+de mensagens da conversa**. Numa conversa de trinta trocas sobre compras,
+carregar contratos e financeiro junto custaria uns 78 KB de contexto que
+ninguém leu.
+
+`descarregar_modulos` faz o caminho de volta e devolve o catálogo ao núcleo,
+para quando o assunto muda no meio da conversa.
 
 Para uma operação que sempre usa os mesmos módulos,
 `SIENGE_PROFILE=compras,contratos` deixa o recorte pronto na subida, sem
-depender do carregamento dinâmico.
+depender do carregamento dinâmico. É a escolha certa quando você **sabe** o que
+vai usar; o carregamento sob demanda existe para quando não se sabe.
 
 > **Se as ferramentas não aparecerem depois de `carregar_compras`**, o cliente
 > pode não ter reindexado a lista — o servidor emite a notificação, mas alguns
