@@ -96,18 +96,21 @@ custo recorrente. O servidor sobe só com o núcleo, e os módulos entram sob
 demanda:
 
 ```
-subida               3 tools    diagnóstico e autenticação
-+ carregar_compras   5 tools    solicitações e pedidos
+subida                 3 tools    diagnóstico e autenticação
++ carregar_compras     7 tools    solicitações e pedidos
++ carregar_contratos   6 tools    contratos de suprimentos e medições
 ```
 
-Para uma operação que sempre usa os mesmos módulos, `SIENGE_PROFILE=compras`
-deixa o recorte pronto na subida, sem depender do carregamento dinâmico.
+Para uma operação que sempre usa os mesmos módulos,
+`SIENGE_PROFILE=compras,contratos` deixa o recorte pronto na subida, sem
+depender do carregamento dinâmico.
 
 > **Se as ferramentas não aparecerem depois de `carregar_compras`**, o cliente
 > pode não ter reindexado a lista — o servidor emite a notificação, mas alguns
-> clientes demoram a reagir. A resposta do carregamento traz os nomes exatos,
-> que podem ser chamados diretamente. Para evitar de vez, use
-> `SIENGE_PROFILE=compras`.
+> clientes demoram a reagir. Isso NÃO quer dizer que as ferramentas não existem
+> naquele ambiente: elas estão registradas no servidor e respondem quando
+> chamadas pelo nome exato, que a resposta do carregamento devolve. Para evitar
+> de vez, pré-carregue: `SIENGE_PROFILE=compras,contratos`.
 
 ## Estado
 
@@ -118,6 +121,7 @@ catálogo de tools pelo ciclo de compras.
 |---|---|---|
 | `nucleo` | 3 | ✅ diagnóstico e autenticação |
 | `compras` | 7 | 🔨 solicitação e pedido; falta cotação e nota fiscal |
+| `contratos` | 6 | 🔨 contrato e medição; falta anexo (binário) |
 | `financeiro` | 1 | ⚠️ apenas um esqueleto de teste, não lê nada do ERP |
 
 ### As tools de hoje
@@ -134,7 +138,13 @@ catálogo de tools pelo ciclo de compras.
 | `compras_pedidos_para_aprovacao` | a fila de pedidos pendentes, com itens e fornecedor resolvidos |
 | `compras_decidir_pedidos` | aprova ou reprova pedidos de compra, com o valor na prévia — **não envia e-mail**, ver abaixo |
 | `compras_pedidos_pendentes_recebimento` | o que foi aprovado e ainda não chegou |
-| `carregar_compras` / `carregar_financeiro` | trazem as tools do módulo |
+| `contratos_listar` | contratos de suprimentos por obra, período e situação |
+| `contratos_detalhar` | tudo de um contrato numa chamada: fornecedor, valor, prazo, saldo e os itens com preço unitário |
+| `contratos_decidir` | autoriza ou reprova contratos, conferindo antes contra a fila real |
+| `contratos_medicoes` | o histórico de medições, com os títulos gerados por cada uma |
+| `contratos_criar_medicao` | mede itens do contrato a partir de nomes, com prévia antes de gravar |
+| `contratos_decidir_medicoes` | autoriza ou reprova medições, conferindo antes contra a fila real |
+| `carregar_compras` / `carregar_contratos` / `carregar_financeiro` | trazem as tools do módulo |
 | `descarregar_modulos` | libera o contexto dos módulos carregados |
 
 ### O processo de compras, e o que falta

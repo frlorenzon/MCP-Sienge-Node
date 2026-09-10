@@ -53,16 +53,22 @@ export function erroSienge(status, developerMessage, campos = []) {
  * @param {Array} [cfg.pedidos] retorno de GET /purchase-orders
  * @param {object} [cfg.itensDePedido] mapa id do pedido -> itens
  * @param {object} [cfg.credores] mapa id -> Creditor
+ * @param {Array} [cfg.contratos] retorno de GET /supply-contracts/all
+ * @param {object} [cfg.contrato] retorno de GET /supply-contracts (um contrato)
+ * @param {Array} [cfg.obrasDoContrato] retorno de GET /supply-contracts/buildings
+ * @param {Array} [cfg.itensDoContrato] retorno de GET /supply-contracts/items
  * @param {function} [cfg.decidirPedido] (id, operacao) => {status, body}
  * @param {object} [cfg.env] variáveis extras
  */
 export async function iniciarSienge(cfg = {}) {
   const chamadas = [];
+  const queries = [];
   const recebido = { cabecalho: null, itens: null, autorizacoes: [], pedidos: [] };
 
   const servidor = http.createServer(async (req, res) => {
     const url = new URL(req.url, "http://interno");
     chamadas.push(`${req.method} ${url.pathname}`);
+    queries.push({ caminho: url.pathname, params: Object.fromEntries(url.searchParams) });
     res.setHeader("content-type", "application/json");
 
     const corpo = async () => {
@@ -100,6 +106,24 @@ export async function iniciarSienge(cfg = {}) {
       const itensDoPedido = url.pathname.match(/\/purchase-orders\/(\d+)\/items$/);
       if (itensDoPedido) {
         return res.end(pagina((cfg.itensDePedido ?? {})[itensDoPedido[1]] ?? [], url));
+      }
+      // Contratos de suprimentos. A ordem importa: "/supply-contracts" é
+      // prefixo de todas as outras rotas do recurso, então ele vem por último.
+      if (url.pathname.endsWith("/supply-contracts/all")) {
+        return res.end(pagina(cfg.contratos ?? [], url));
+      }
+      if (url.pathname.endsWith("/supply-contracts/buildings")) {
+        return res.end(pagina(cfg.obrasDoContrato ?? [], url));
+      }
+      if (url.pathname.endsWith("/supply-contracts/items")) {
+        return res.end(pagina(cfg.itensDoContrato ?? [], url));
+      }
+      if (url.pathname.endsWith("/supply-contracts")) {
+        if (!cfg.contrato) {
+          res.statusCode = 404;
+          return res.end(erroSienge(404, "Contrato não encontrado"));
+        }
+        return res.end(JSON.stringify(cfg.contrato));
       }
       const credor = url.pathname.match(/\/creditors\/(\d+)$/);
       if (credor) {
@@ -198,6 +222,8 @@ export async function iniciarSienge(cfg = {}) {
   return {
     chamadas,
     recebido,
+    /** Query string da última chamada a um caminho — para conferir filtros. */
+    query: (trecho) => queries.filter((q) => q.caminho.includes(trecho)).at(-1)?.params ?? null,
     /** Quantas vezes um caminho foi chamado — para provar cache e paginação. */
     contar: (trecho) => chamadas.filter((c) => c.includes(trecho)).length,
     async fechar() {
@@ -226,5 +252,17 @@ export function carregarPurchaseClient() {
   // codificaria o '%' do caminho uma segunda vez — num diretório com espaço,
   // "MCP%20Sienge" vira "MCP%2520Sienge" e o módulo não é encontrado.
   const alvo = new URL("src/client/purchaseClient.js", RAIZ);
+  return import(`${alvo.href}?v=${versao++}`);
+}
+
+/**
+ * Importa o client de contratos com o cache de módulo furado.
+ *
+ * Mesmo motivo de `carregarPurchaseClient`, com outro alvo: as duas filas de
+ * autorização são guardadas em variáveis de escopo de módulo, com TTL de 15
+ * minutos. Sem furar o cache, a fila de um caso apareceria no seguinte.
+ */
+export function carregarSupplyContractClient() {
+  const alvo = new URL("src/client/supplyContractClient.js", RAIZ);
   return import(`${alvo.href}?v=${versao++}`);
 }

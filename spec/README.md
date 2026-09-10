@@ -54,3 +54,29 @@ irregular. São preservadas no código de propósito:
 
 Note que `buildingsApropriations` vale para o **payload**; a **rota** de
 consulta usa a grafia correta, `buildings-appropriations`.
+
+## Onde o spec e a produção discordam
+
+Divergências que o arquivo NÃO registra — descobertas chamando o tenant real.
+Aqui não é grafia irregular do spec: é o spec dizendo uma coisa e o servidor
+respondendo outra.
+
+| Onde | O spec diz | A produção responde |
+|---|---|---|
+| `BuildingDTO` (`/supply-contracts/buildings`) | `buildingId`, `costCenterId`, `departmentId` | `buildingID`, `costCenterID`, `departmentID` |
+| `ConstructUnitDTO.status` | `L` / `B` | `RELEASED` |
+
+E uma que não é de nome, mas de **valor**: `BuildingDTO` traz `buildingID`
+(interno) e `buildingIdView` (código da obra no Sienge), e é o **View** que
+todos os outros endpoints aceitam no parâmetro `buildingId` — apesar de o spec
+descrever esse parâmetro como "identificador (interno) da obra". Conferido no
+contrato CTS/325 da obra iU.06:
+
+```
+GET /supply-contracts/items?buildingId=21   → 404 "Obra 21 não encontrada"
+GET /supply-contracts/all?buildingId=21     → 200 com 85 contratos de OUTRA obra
+GET /supply-contracts/all?buildingId=20     → 200 com os 75 contratos certos
+```
+
+O 404 aparece; os 85 contratos errados, não. É o mesmo id de `/cost-centers`.
+Tratado em `client/supplyContractClient.js`, na função `idDaObra`.

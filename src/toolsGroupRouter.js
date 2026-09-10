@@ -2,7 +2,10 @@ import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprot
 
 // Módulos que podem ser carregados sob demanda. O núcleo não entra aqui —
 // ele é carregado à parte, sempre, e nunca é descarregado.
-const MODULOS = {
+//
+// Exportado para o teste: uma importação com caminho ou nome de export errado
+// aqui só falharia quando alguém chamasse `carregar_X`, em produção.
+export const MODULOS = {
   compras: {
     resumo: "cotações, pedidos de compra, fornecedores",
     carregar: () => import("./modules/purchase.js").then((m) => m.purchaseModule),
@@ -10,6 +13,10 @@ const MODULOS = {
   financeiro: {
     resumo: "contas a pagar e a receber, boletos, fluxo de caixa",
     carregar: () => import("./modules/financial.js").then((m) => m.financialModule),
+  },
+  contratos: {
+    resumo: "contratos de suprimentos, medições e suas aprovações",
+    carregar: () => import("./modules/supplyContract.js").then((m) => m.supplyContractModule),
   },
 };
 
@@ -79,10 +86,23 @@ export async function setupToolsGroupRouter(server) {
         await server.notification({ method: "notifications/tools/list_changed" });
       }
 
+      const ferramentas = carregados.get(alvo).tools.map((t) => t.name);
       return ok({
         success: true,
         modulo: alvo,
-        ferramentas: carregados.get(alvo).tools.map((t) => t.name),
+        ferramentas,
+        // O servidor emite `notifications/tools/list_changed`, mas alguns
+        // clientes (o Claude Desktop entre eles) não reindexam a lista no meio
+        // da conversa: as tools ficam registradas aqui e invisíveis lá. Sem
+        // esta linha, quem está do outro lado conclui que elas "não existem
+        // neste ambiente" e desiste — foi exatamente o que aconteceu. O aviso
+        // custa uma vez, na resposta do carregamento, e não no catálogo.
+        se_as_ferramentas_nao_aparecerem:
+          `Elas ESTÃO registradas: ${ferramentas.join(", ")}. Se o seu cliente não as ` +
+          `listar, é ele que não reagiu à notificação de mudança do catálogo — não é ` +
+          `ausência de ferramenta. Chame pelo nome exato assim mesmo; se o cliente ` +
+          `recusar, ponha '${alvo}' em SIENGE_PROFILE (ex: SIENGE_PROFILE="${alvo}") e ` +
+          `reinicie a sessão, que elas sobem já registradas.`,
       });
     }
 
