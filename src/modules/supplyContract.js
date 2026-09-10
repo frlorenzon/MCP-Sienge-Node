@@ -7,7 +7,7 @@
  * Só é importado quando `carregar_contratos` é chamada — é essa a diferença
  * entre o módulo custar tokens e não custar. Nada aqui roda na subida.
  *
- * SEIS TOOLS, E NÃO OITO: as duas filas de autorização (contratos e medições)
+ * SETE TOOLS, E NÃO NOVE: as duas filas de autorização (contratos e medições)
  * não têm tool própria. Chamar `contratos_decidir` ou
  * `contratos_decidir_medicoes` SEM alvo já devolve a fila — mesmo desenho de
  * `compras_decidir_solicitacoes`. Uma tool de listagem separada no caminho de
@@ -24,6 +24,7 @@ import {
   listarContratos,
   detalharContrato,
   listarMedicoesDoContrato,
+  baixarAnexosDoContrato,
   decidirContratos,
   decidirMedicoes,
   criarMedicaoDeContrato,
@@ -79,6 +80,36 @@ export const supplyContractModule = {
           obra: { type: "string", description: "nome (ou parte) da obra" },
           incluir_itens: { type: "boolean", description: "true (padrão) traz os itens de cada planilha" },
           incluir_aditivos: { type: "boolean", description: "false (padrão); true traz os aditivos" },
+        },
+      },
+    },
+    {
+      // Grava em DISCO, não no ERP. Por isso não tem `confirmar`: a regra da
+      // prévia protege contra escrita irreversível no Sienge, e apagar um
+      // arquivo desfaz isto aqui. O que a descrição precisa deixar claro é o
+      // contrário — que ela NÃO lê o arquivo, só o entrega.
+      name: "contratos_baixar_anexos",
+      description:
+        "Baixa os anexos de um contrato e os SALVA em disco, na pasta configurada em " +
+        "SIENGE_PASTA_ANEXOS, dentro de uma subpasta '<DOCUMENTO-NÚMERO> - <fornecedor>'. " +
+        "Baixa TODOS os anexos de uma vez; use `anexos` só para escolher alguns. Ao " +
+        "responder, DIGA em que pasta os arquivos foram salvos e ofereça `abrir_pasta` " +
+        "(link) e `comando_para_abrir` (uma linha de terminal que abre o Finder/Explorer " +
+        "ali) — é assim que o usuário chega nos arquivos. NÃO abre nem lê o conteúdo: o servidor grava os " +
+        "bytes como vieram, então não prometa resumir, extrair ou interpretar o que está " +
+        "dentro. Um anexo que falhe não impede os outros — a resposta lista o que salvou e " +
+        "o que não.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          contrato: { type: "string", description: "número do contrato ou parte do objeto" },
+          documento: { type: "string", description: "código do documento, ex: 'CTS'" },
+          obra: { type: "string", description: "nome (ou parte) da obra" },
+          anexos: {
+            type: "array",
+            description: "números dos anexos a baixar; omita para baixar todos",
+            items: { type: "number" },
+          },
         },
       },
     },
@@ -238,6 +269,7 @@ export const supplyContractModule = {
   handlers: {
     contratos_listar: listarContratos,
     contratos_detalhar: detalharContrato,
+    contratos_baixar_anexos: baixarAnexosDoContrato,
     contratos_decidir: decidirContratos,
     contratos_medicoes: listarMedicoesDoContrato,
     contratos_criar_medicao: criarMedicaoDeContrato,

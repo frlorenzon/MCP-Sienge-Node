@@ -21,22 +21,33 @@ import { resolveAuth, baseUrl } from "../config.js";
  * @param {unknown} [opcoes.body] corpo da requisição, serializado como JSON
  * @returns {Promise<{success: boolean, status_code?: number, data?: unknown, error?: string, message?: string}>}
  */
-export async function makeRequest(method, path, { params, body } = {}) {
+/**
+ * Credencial + URL montada, ou o motivo de não dar para chamar.
+ *
+ * Extraído de `makeRequest` para `baixarArquivo` usar a MESMA montagem: a URL
+ * base, o subdomínio e o jeito de serializar a query são exatamente o que não
+ * pode divergir entre os dois caminhos.
+ */
+function preparar(path, params) {
   const auth = resolveAuth();
   if (!auth.ok) {
     return {
-      success: false,
-      error: "AuthNotConfigured",
-      message: "Nenhuma credencial configurada. Use verificar_autenticacao para detalhes.",
+      erro: {
+        success: false,
+        error: "AuthNotConfigured",
+        message: "Nenhuma credencial configurada. Use verificar_autenticacao para detalhes.",
+      },
     };
   }
 
   const subdominio = (process.env.SIENGE_SUBDOMAIN || "").trim();
   if (!subdominio) {
     return {
-      success: false,
-      error: "SubdomainNotConfigured",
-      message: "SIENGE_SUBDOMAIN não configurado — ele compõe a URL de toda chamada.",
+      erro: {
+        success: false,
+        error: "SubdomainNotConfigured",
+        message: "SIENGE_SUBDOMAIN não configurado — ele compõe a URL de toda chamada.",
+      },
     };
   }
 
@@ -51,6 +62,14 @@ export async function makeRequest(method, path, { params, body } = {}) {
       url.searchParams.set(chave, String(valor));
     }
   }
+
+  return { auth, url };
+}
+
+export async function makeRequest(method, path, { params, body } = {}) {
+  const preparado = preparar(path, params);
+  if (preparado.erro) return preparado.erro;
+  const { auth, url } = preparado;
 
   try {
     const resposta = await fetch(url, {
@@ -139,4 +158,111 @@ export async function testarConexao() {
     status_code: resposta.status_code,
     latency_ms,
   };
+}
+
+/**
+ * Baixa um arquivo — a resposta que `makeRequest` não sabe ler.
+ *
+ * `makeRequest` desserializa tudo como JSON e recorta o texto em 500
+ * caracteres quando não consegue: um PDF passando por lá vira lixo silencioso.
+ * Por isso este caminho existe à parte, e devolve BYTES.
+ *
+ * Não grava nada. Quem decide onde salvar é a camada de cima — aqui só se
+ * busca, porque escrever em disco é decisão de negócio (a pasta vem de
+ * configuração) e não pertence ao cliente HTTP.
+ *
+ * O erro continua sendo lido no formato `ErrorMessage` do Sienge: um 404 de
+ * anexo responde JSON mesmo quando a rota promete octet-stream, e tratá-lo
+ * como binário esconderia a mensagem que diz o que faltou.
+ *
+ * @param {string} path caminho a partir de /public/api/v1
+ * @param {object} [opcoes]
+ * @param {Record<string, unknown>} [opcoes.params] query string
+ * @returns {Promise<{success: boolean, bytes?: Buffer, content_type?: string,
+ *   nome_sugerido?: string｜null, status_code?: number, error?: string, message?: string}>}
+ */
+export async function baixarArquivo(path, { params } = {}) {
+  const preparado = preparar(path, params);
+  if (preparado.erro) return preparado.erro;
+  const { auth, url } = preparado;
+
+  try {
+    const resposta = await fetch(url, {
+      method: "GET",
+      headers: {
+        ...auth.headers,
+        // O spec oferece octet-stream ou, com Accept text/plain, o mesmo
+        // arquivo em base64. Pedimos o binário: base64 infla 33% e ainda
+        // precisaria ser decodificado aqui.
+        Accept: "application/octet-stream, application/json;q=0.5, */*;q=0.1",
+      },
+    });
+
+    const status_code = resposta.status;
+
+    if (!resposta.ok) {
+      // Mesmo formato de erro do resto da API — ver o comentário em
+      // `makeRequest`. Não existe campo `message` no ErrorMessage do Sienge.
+      const texto = await resposta.text();
+      let corpo = {};
+      try {
+        const lido = JSON.parse(texto);
+        if (lido && typeof lido === "object" && !Array.isArray(lido)) corpo = lido;
+      } catch {
+        corpo = {};
+      }
+
+      return {
+        success: false,
+        status_code,
+        error: `HTTP_${status_code}`,
+        message:
+          corpo.developerMessage ||
+          corpo.clientMessage ||
+          resposta.statusText ||
+          `A API respondeu ${status_code}.`,
+        ...(corpo.clientMessage && corpo.clientMessage !== corpo.developerMessage
+          ? { client_message: corpo.clientMessage }
+          : {}),
+        ...(Array.isArray(corpo.errors) && corpo.errors.length
+          ? { campos_invalidos: corpo.errors }
+          : {}),
+      };
+    }
+
+    const bytes = Buffer.from(await resposta.arrayBuffer());
+
+    return {
+      success: true,
+      status_code,
+      bytes,
+      content_type: resposta.headers.get("content-type"),
+      nome_sugerido: nomeDoContentDisposition(resposta.headers.get("content-disposition")),
+    };
+  } catch (err) {
+    return { success: false, error: err.name, message: err.message };
+  }
+}
+
+/**
+ * Nome do arquivo anunciado pelo servidor, quando ele anuncia.
+ *
+ * Duas formas convivem no cabeçalho: `filename="x.pdf"` e a versão com
+ * charset, `filename*=UTF-8''x%20y.pdf`. A segunda vem percent-encoded e tem
+ * precedência — é a que preserva acento, e nome de anexo em português tem.
+ */
+function nomeDoContentDisposition(cabecalho) {
+  if (!cabecalho) return null;
+
+  const comCharset = cabecalho.match(/filename\*=(?:UTF-8|utf-8)''([^;]+)/);
+  if (comCharset) {
+    try {
+      return decodeURIComponent(comCharset[1].trim());
+    } catch {
+      return comCharset[1].trim();
+    }
+  }
+
+  const simples = cabecalho.match(/filename="?([^";]+)"?/);
+  return simples ? simples[1].trim() : null;
 }

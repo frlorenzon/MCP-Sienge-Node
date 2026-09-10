@@ -57,6 +57,9 @@ export function erroSienge(status, developerMessage, campos = []) {
  * @param {object} [cfg.contrato] retorno de GET /supply-contracts (um contrato)
  * @param {Array} [cfg.obrasDoContrato] retorno de GET /supply-contracts/buildings
  * @param {Array} [cfg.itensDoContrato] retorno de GET /supply-contracts/items
+ * @param {Array} [cfg.anexos] retorno de GET /supply-contracts/attachments/all
+ * @param {object} [cfg.conteudoAnexo] mapa número -> string｜Buffer com os bytes,
+ *   ou {status, body} para simular falha de um anexo só
  * @param {function} [cfg.decidirPedido] (id, operacao) => {status, body}
  * @param {object} [cfg.env] variáveis extras
  */
@@ -109,6 +112,26 @@ export async function iniciarSienge(cfg = {}) {
       }
       // Contratos de suprimentos. A ordem importa: "/supply-contracts" é
       // prefixo de todas as outras rotas do recurso, então ele vem por último.
+      if (url.pathname.endsWith("/supply-contracts/attachments/all")) {
+        return res.end(pagina(cfg.anexos ?? [], url));
+      }
+      if (url.pathname.endsWith("/supply-contracts/attachments")) {
+        const numero = url.searchParams.get("contractAttachmentNumber");
+        const conteudo = (cfg.conteudoAnexo ?? {})[numero];
+        if (conteudo === undefined) {
+          res.statusCode = 404;
+          return res.end(erroSienge(404, `Anexo ${numero} não encontrado`));
+        }
+        if (conteudo && typeof conteudo === "object" && !Buffer.isBuffer(conteudo)) {
+          res.statusCode = conteudo.status;
+          return res.end(conteudo.body ?? erroSienge(conteudo.status, "falha simulada"));
+        }
+        // Binário de verdade, com o Content-Disposition que o Sienge manda —
+        // é dele que sai o nome do arquivo quando o cadastro não tem um.
+        res.setHeader("content-type", "application/octet-stream");
+        res.setHeader("content-disposition", `attachment; filename="anexo-${numero}.pdf"`);
+        return res.end(Buffer.isBuffer(conteudo) ? conteudo : Buffer.from(conteudo));
+      }
       if (url.pathname.endsWith("/supply-contracts/all")) {
         return res.end(pagina(cfg.contratos ?? [], url));
       }

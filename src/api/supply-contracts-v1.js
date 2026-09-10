@@ -30,13 +30,13 @@
  * Cada função chama `makeRequest` e devolve o formato padrão do servidor
  * (`success`, mais os dados ou o erro).
  *
- * NÃO TRADUZIDO AINDA: `baixarAnexo` (GET /supply-contracts/attachments,
- * resposta binária ou base64) e `inserirAnexo` (POST do mesmo path, corpo
- * multipart). As duas dependem de recursos que `makeRequest` ainda não tem —
- * mesma pendência de `purchase-orders-v1.js`. Ver `client/siengeClient.js`.
+ * NÃO TRADUZIDO AINDA: `inserirAnexo` (POST /supply-contracts/attachments,
+ * corpo multipart). Depende de um recurso que `makeRequest` ainda não tem —
+ * mesma pendência de `purchase-orders-v1.js`. O DOWNLOAD, esse já existe:
+ * `baixarAnexo`, por `baixarArquivo` em `client/siengeClient.js`.
  */
 
-import { makeRequest } from "../client/siengeClient.js";
+import { makeRequest, baixarArquivo } from "../client/siengeClient.js";
 
 const LIMIT_PADRAO = 100;
 const LIMIT_MAXIMO = 200;
@@ -398,10 +398,43 @@ export async function buscarAnexosDoContrato(documentId, contractNumber) {
   );
 }
 
-// baixarAnexo (GET /supply-contracts/attachments — devolve binário, ou base64
-// quando o Accept é text/plain) e inserirAnexo (POST do mesmo path, corpo
-// multipart, campo `file`, 70 MB, nome de até 100 caracteres, um anexo por
-// requisição) ficam de fora por enquanto — ver o aviso no topo do arquivo.
+/**
+ * GET /supply-contracts/attachments — baixa UM anexo do contrato.
+ *
+ * Devolve os BYTES, não JSON: passa por `baixarArquivo` e não por
+ * `makeRequest`, que desserializaria um PDF como se fosse texto.
+ *
+ * `contractAttachmentNumber` vem de `buscarAnexosDoContrato` — é o número do
+ * anexo DENTRO do contrato, não um id global.
+ *
+ * Não grava nada em disco. Quem escolhe a pasta é o client, porque isso é
+ * configuração da instalação e não pertence a uma tradução de endpoint.
+ */
+export async function baixarAnexo(documentId, contractNumber, contractAttachmentNumber) {
+  const resposta = await baixarArquivo(`${RECURSO}/attachments`, {
+    params: { ...chave(documentId, contractNumber), contractAttachmentNumber },
+  });
+
+  if (!resposta.success) {
+    return falha(
+      resposta,
+      `Erro ao baixar o anexo ${contractAttachmentNumber} do contrato ` +
+        rotulo(documentId, contractNumber)
+    );
+  }
+
+  return {
+    success: true,
+    bytes: resposta.bytes,
+    content_type: resposta.content_type,
+    nome_sugerido: resposta.nome_sugerido,
+    tamanho_bytes: resposta.bytes.length,
+  };
+}
+
+// inserirAnexo (POST do mesmo path, corpo multipart, campo `file`, 70 MB, nome
+// de até 100 caracteres, um anexo por requisição) fica de fora por enquanto —
+// `makeRequest` ainda não monta multipart. Ver o aviso no topo do arquivo.
 
 // =========================================================
 // AUTORIZAÇÃO E REPROVAÇÃO

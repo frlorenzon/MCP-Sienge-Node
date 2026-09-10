@@ -27,12 +27,19 @@
  * de lá para um módulo só.
  */
 
+import { mkdir, writeFile } from "node:fs/promises";
+import { join, resolve, isAbsolute } from "node:path";
+import { homedir } from "node:os";
+import { pathToFileURL } from "node:url";
+
 import {
   buscarContrato,
   buscarContratos,
   buscarObrasDoContrato,
   buscarItensDoContrato,
   buscarAditivos,
+  buscarAnexosDoContrato,
+  baixarAnexo,
   autorizarContrato,
   reprovarContrato,
 } from "../api/supply-contracts-v1.js";
@@ -1856,5 +1863,223 @@ export async function criarMedicaoDeContrato({
       "medições. A liberação — que gera o título a pagar — é passo seguinte, e não é " +
       "exposta pela API.",
     previa,
+  };
+}
+
+// =========================================================
+// DOWNLOAD DE ANEXOS
+// =========================================================
+// O arquivo é salvo, nunca lido: o servidor não abre PDF, não extrai texto,
+// não interpreta planilha. Ele grava os bytes como vieram e devolve o caminho
+// — quem abre é a pessoa, no programa dela.
+
+/** Variável de ambiente que diz ONDE salvar. Sem ela, a tool não tem para onde ir. */
+const VARIAVEL_DA_PASTA = "SIENGE_PASTA_ANEXOS";
+
+/**
+ * Torna um texto seguro como nome de arquivo ou de pasta.
+ *
+ * O nome vem do ERP — digitado por gente, com barra, dois-pontos e acento — e
+ * vai virar caminho no disco de quem chamou. Sem sanear, um anexo chamado
+ * "../../.ssh/authorized_keys" escreveria fora da pasta configurada. Barra e
+ * contrabarra somem, os caracteres que Windows recusa somem, e o resultado é
+ * cortado antes do limite de 255 bytes dos sistemas de arquivo comuns.
+ */
+function saneado(texto, alternativa = "sem-nome") {
+  const limpo = String(texto ?? "")
+    .replace(/[/\\]/g, "-")
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\u0000-\u001f<>:"|?*]/g, "")
+    .replace(/\s+/g, " ")
+    .replace(/^[.\s]+|[.\s]+$/g, "")
+    .slice(0, 120)
+    .trim();
+  return limpo || alternativa;
+}
+
+/**
+ * Como abrir uma pasta no gerenciador de arquivos deste sistema.
+ *
+ * A URL `file://` é o que o cliente consegue transformar em link clicável —
+ * mas o que ela faz ao ser clicada varia: no Finder e no Explorer abre a
+ * pasta, num navegador abre uma listagem. Por isso o comando de terminal vai
+ * junto: ele funciona em qualquer caso, e é uma linha para colar.
+ */
+function comoAbrir(caminho) {
+  const comandos = { darwin: "open", win32: "explorer", linux: "xdg-open" };
+  const comando = comandos[process.platform] ?? "xdg-open";
+  return {
+    abrir_pasta: pathToFileURL(caminho).href,
+    comando_para_abrir: `${comando} "${caminho}"`,
+  };
+}
+
+/**
+ * A pasta configurada, absoluta.
+ *
+ * Aceita `~` porque é assim que se escreve caminho de casa num .env, e o
+ * shell não expande nada aqui — a variável chega crua ao processo.
+ */
+function pastaConfigurada() {
+  const bruto = (process.env[VARIAVEL_DA_PASTA] || "").trim();
+  if (!bruto) return null;
+
+  const expandido = bruto.startsWith("~") ? join(homedir(), bruto.slice(1)) : bruto;
+  return isAbsolute(expandido) ? expandido : resolve(expandido);
+}
+
+/**
+ * Baixa os anexos de um contrato para a pasta configurada.
+ *
+ * Cada contrato ganha uma subpasta própria, nomeada "<DOC-NÚMERO> -
+ * <fornecedor>" — dois contratos com um anexo chamado "contrato assinado.pdf"
+ * cada um sobrescreveriam um ao outro se dividissem a mesma pasta.
+ *
+ * NÃO É PRÉVIA-E-CONFIRMA como as escritas: isto não grava no ERP, só lê. O
+ * efeito colateral é local e reversível — apagar o arquivo desfaz.
+ *
+ * Um anexo que falhe não derruba os outros: a resposta lista o que salvou e o
+ * que não, com o motivo de cada falha.
+ *
+ * @param {object} args
+ * @param {string} [args.contrato] número do contrato ou parte do objeto
+ * @param {string} [args.documento] código do documento, ex: "CTS"
+ * @param {string} [args.obra] nome (ou parte) da obra
+ * @param {Array<number>} [args.anexos] números dos anexos; omitido baixa TODOS
+ * @param {string} [args.desde] amplia a janela de busca do contrato
+ * @param {string} [args.ate] idem
+ */
+export async function baixarAnexosDoContrato({
+  contrato,
+  documento,
+  obra,
+  anexos,
+  desde,
+  ate,
+} = {}) {
+  const base = pastaConfigurada();
+  if (!base) {
+    return {
+      success: false,
+      error: "PastaNaoConfigurada",
+      message:
+        `${VARIAVEL_DA_PASTA} não está configurada no .env — é a pasta onde os anexos ` +
+        `são salvos, e sem ela não há para onde baixar. Ex: ` +
+        `${VARIAVEL_DA_PASTA}="~/Downloads/sienge".`,
+    };
+  }
+
+  const referencia = await resolverContratoPorReferencia({ contrato, documento, obra, desde, ate });
+  if (!referencia.success) return referencia;
+
+  const { documentId, contractNumber } = referencia;
+
+  // O nome da pasta leva o fornecedor, então ele precisa estar resolvido antes
+  // de qualquer download — não dá para renomear a pasta no meio.
+  const cabecalho = await buscarContrato(documentId, contractNumber);
+  if (!cabecalho.success) return cabecalho;
+
+  const resolverFornecedor = criarResolverFornecedor();
+  const fornecedor = await resolverFornecedor(cabecalho.contract?.supplierId);
+
+  const listagem = await buscarAnexosDoContrato(documentId, contractNumber);
+  if (!listagem.success) return listagem;
+
+  if (!listagem.attachments.length) {
+    return {
+      success: true,
+      message: `O contrato ${rotulo(documentId, contractNumber)} não tem anexos.`,
+      documento: documentId,
+      contrato: contractNumber,
+      count: 0,
+      arquivos: [],
+    };
+  }
+
+  const pedidos = anexos?.length
+    ? listagem.attachments.filter((a) => anexos.includes(Number(a.contractAttachmentNumber)))
+    : listagem.attachments;
+
+  if (!pedidos.length) {
+    return {
+      success: false,
+      error: "AnexoNaoEncontrado",
+      message:
+        `Nenhum anexo do contrato ${rotulo(documentId, contractNumber)} tem os números ` +
+        `pedidos (${anexos.join(", ")}).`,
+      anexos_do_contrato: listagem.attachments.map((a) => ({
+        anexo: a.contractAttachmentNumber,
+        nome: a.name,
+        descricao: a.description,
+      })),
+    };
+  }
+
+  const nomeDaPasta = saneado(
+    `${documentId}-${contractNumber} - ${fornecedor?.name ?? "fornecedor não identificado"}`,
+    `${documentId}-${contractNumber}`
+  );
+  const destino = join(base, nomeDaPasta);
+
+  try {
+    await mkdir(destino, { recursive: true });
+  } catch (err) {
+    return {
+      success: false,
+      error: "PastaNaoCriada",
+      message: `Não consegui criar a pasta ${destino}: ${err.message}`,
+    };
+  }
+
+  const arquivos = [];
+  const falhas = [];
+
+  for (const anexo of pedidos) {
+    const numero = anexo.contractAttachmentNumber;
+    const baixado = await baixarAnexo(documentId, contractNumber, numero);
+
+    if (!baixado.success) {
+      falhas.push({ anexo: numero, nome: anexo.name, motivo: baixado.details ?? baixado.message });
+      continue;
+    }
+
+    // Três origens para o nome, nesta ordem: o cadastro do anexo, o que o
+    // servidor anunciou no Content-Disposition, e por último um nome
+    // sintético. O do cadastro é o que a pessoa reconhece.
+    const nome = saneado(anexo.name || baixado.nome_sugerido || `anexo-${numero}`, `anexo-${numero}`);
+    const caminho = join(destino, nome);
+
+    try {
+      await writeFile(caminho, baixado.bytes);
+    } catch (err) {
+      falhas.push({ anexo: numero, nome, motivo: `não consegui gravar: ${err.message}` });
+      continue;
+    }
+
+    arquivos.push({
+      anexo: numero,
+      nome,
+      descricao: anexo.description,
+      arquivo: caminho,
+      // O caminho serve para o terminal; a URL, para abrir com um clique.
+      abrir: pathToFileURL(caminho).href,
+      tamanho_bytes: baixado.tamanho_bytes,
+    });
+  }
+
+  return {
+    success: arquivos.length > 0,
+    message: arquivos.length
+      ? `✅ ${arquivos.length} de ${pedidos.length} anexo(s) salvos na pasta ${destino}` +
+        (falhas.length ? ` — ${falhas.length} falharam, ver 'falhas'.` : ".")
+      : `❌ Nenhum anexo pôde ser salvo em ${destino}. Ver 'falhas'.`,
+    documento: documentId,
+    contrato: contractNumber,
+    fornecedor: fornecedor?.name ?? null,
+    pasta: destino,
+    ...comoAbrir(destino),
+    count: arquivos.length,
+    arquivos,
+    ...(falhas.length ? { falhas } : {}),
   };
 }
