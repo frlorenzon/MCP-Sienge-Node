@@ -143,12 +143,27 @@ Para uma operação que sempre usa os mesmos módulos,
 depender do carregamento dinâmico. É a escolha certa quando você **sabe** o que
 vai usar; o carregamento sob demanda existe para quando não se sabe.
 
-> **Se as ferramentas não aparecerem depois de `carregar_compras`**, o cliente
-> pode não ter reindexado a lista — o servidor emite a notificação, mas alguns
-> clientes demoram a reagir. Isso NÃO quer dizer que as ferramentas não existem
-> naquele ambiente: elas estão registradas no servidor e respondem quando
-> chamadas pelo nome exato, que a resposta do carregamento devolve. Para evitar
-> de vez, pré-carregue: `SIENGE_PROFILE=compras,contratos`.
+### Se as ferramentas não aparecerem depois de `carregar_*`
+
+Quando o catálogo muda, o servidor avisa o cliente (`tools/list_changed`) para
+ele buscar a lista de novo. **Alguns clientes, entre eles o Claude Desktop, não
+reagem no meio da conversa**: a lista que o assistente enxerga foi congelada
+quando a sessão começou. As tools ficam registradas no servidor e invisíveis do
+outro lado.
+
+O sintoma engana. O assistente não recebe "ainda não indexei"; ele recebe uma
+recusa e conclui que as ferramentas não existem — foi assim que uma sessão
+chegou a afirmar que o módulo de contratos não estava disponível, com o módulo
+carregado e funcionando.
+
+Dois caminhos:
+
+- **Na hora:** a resposta do `carregar_*` traz os nomes exatos das ferramentas.
+  Chamar pelo nome costuma funcionar mesmo com a lista desatualizada.
+- **De vez:** pré-carregue com `SIENGE_PROFILE=compras,contratos`. Os módulos
+  sobem antes do primeiro `tools/list`, então não há mudança de catálogo para o
+  cliente ignorar. O preço é pagar esses módulos em toda mensagem, inclusive
+  nas conversas que não usam nenhum deles.
 
 ## Estado
 
