@@ -38,6 +38,7 @@ import {
   buscarObrasDoContrato,
   buscarItensDoContrato,
   buscarAditivos,
+  buscarItensDoAditivo,
   buscarAnexosDoContrato,
   baixarAnexo,
   autorizarContrato,
@@ -75,6 +76,20 @@ const CONSISTENCIA = {
   inclusao: "I",
   todos: "T",
 };
+
+// `statusApproval` é outro eixo: não diz se o contrato espera autorização, diz
+// se ele foi REPROVADO. Todo contrato nasce "A" e só vira "D" numa reprovação.
+const APROVACAO = {
+  aprovado: "A",
+  reprovado: "D",
+};
+
+/**
+ * Situações do contrato que não entram na fila de aprovação, mesmo aguardando
+ * autorização: concluído já terminou, revogado foi desfeito. Nos dois não há o
+ * que autorizar. Não há filtro de situação na API, então saem no código.
+ */
+const SITUACOES_FORA_DA_FILA = ["COMPLETED", "RESCINDED"];
 
 function letra(mapa, palavra, oQue) {
   if (palavra === null || palavra === undefined || palavra === "") return undefined;
@@ -491,7 +506,7 @@ function rotulo(documentId, contractNumber) {
  * A janela é OBRIGATÓRIA na API — ver o cabeçalho deste arquivo. Devolve
  * também qual janela usou, para a resposta poder dizer onde olhou.
  */
-async function varrerContratos({ buildingId, companyId, desde, ate, autorizacao, consistencia }) {
+async function varrerContratos({ buildingId, companyId, desde, ate, autorizacao, consistencia, aprovacao }) {
   const periodo = janela(desde, ate);
 
   const varredura = await varrer(
@@ -502,6 +517,7 @@ async function varrerContratos({ buildingId, companyId, desde, ate, autorizacao,
         companyId,
         authorization: autorizacao,
         consistency: consistencia,
+        statusApproval: aprovacao,
         ...pag,
       }),
     "contracts"
@@ -946,68 +962,277 @@ export async function listarMedicoesDoContrato({
 // =========================================================
 // FILAS DE AUTORIZAÇÃO
 // =========================================================
-// Mesmo desenho das filas de compras: um cache curto serve a PRÉVIA, nunca a
-// execução. Autorizar é irreversível por esta API, e entre ver a fila e mandar
-// autorizar outra pessoa pode ter decidido o mesmo contrato — por isso quem
-// grava relê a fila antes (`{ fresca: true }`).
 
 const TTL_FILA_MS = 15 * 60 * 1000;
-let filaDeContratos = null;
 let filaDeMedicoes = null;
 
-/**
- * Contratos aguardando autorização (`authorization: "N"`), com fornecedor e
- * obras resolvidos.
- *
- * Filtra SÓ por autorização. Em pedidos de compra a fila precisou também de
- * `consistency` e `status` para não trazer lixo — aqui isso não foi conferido
- * contra produção, então o campo `consistent` de cada contrato vai na resposta
- * em vez de virar filtro escondido: um contrato inconsistente aparece, e quem
- * decide vê que ele está inconsistente.
- */
-export async function listarContratosParaAutorizacao({
-  obra,
-  desde,
-  ate,
-  fresca = false,
-} = {}) {
-  const agora = Date.now();
-  const semFiltro = !obra && !desde && !ate;
+// A fila de aprovação de contratos varre desde 2000, e não os 4 anos das
+// buscas por nome. Duas razões, conferidas em produção: a fila é pequena (9
+// contratos no tenant real), então a janela larga não custa nada; e um ADITIVO
+// pendente pode estar pendurado num contrato antigo — com a janela de 4 anos,
+// um aditivo num contrato de 2021 ficaria de fora sem erro nenhum.
+const INICIO_DA_FILA = "2000-01-01";
 
-  if (!fresca && semFiltro && filaDeContratos && agora - filaDeContratos.em < TTL_FILA_MS) {
-    return { ...filaDeContratos.valor, do_cache: true };
+/** Máximo de itens mostrados por contrato na fila — o resto vai contado, não omitido em silêncio. */
+const MAX_ITENS_NA_FILA = 30;
+
+/** Chamadas simultâneas ao Sienge ao enriquecer a fila. A API tem 429; paralelismo sem teto é pedir um. */
+const PARALELISMO = 4;
+
+/**
+ * Executa `fn` sobre cada item, no máximo `limite` de cada vez, preservando a
+ * ordem do resultado.
+ *
+ * Enriquecer a fila custa três ou quatro chamadas por contrato. Em série, nove
+ * contratos passam de dez segundos; sem teto, uma fila grande dispara o 429.
+ */
+async function emParalelo(itens, limite, fn) {
+  const resultado = new Array(itens.length);
+  let proximo = 0;
+  async function trabalhador() {
+    while (proximo < itens.length) {
+      const indice = proximo++;
+      resultado[indice] = await fn(itens[indice], indice);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limite, itens.length) }, trabalhador));
+  return resultado;
+}
+
+/**
+ * A fila crua: contratos aguardando autorização, uma varredura só.
+ *
+ * É o que a APROVAÇÃO confere antes de gravar. Barata de propósito — uma
+ * chamada paginada, sem itens nem aditivos —, para poder ser relida a cada
+ * decisão sem cache nenhum: entre ver a fila e mandar aprovar, outra pessoa
+ * pode ter decidido o mesmo contrato.
+ *
+ * Só entram contratos com cadastro COMPLETO (`consistency: "S"`). Os outros
+ * estão "em inclusão" — alguém ainda está cadastrando: em produção eram 3 dos
+ * 9 pendentes, com valor zerado e sem obra. Não há o que aprovar neles.
+ *
+ * ARMADILHA conferida em produção: o booleano `consistent: false` do DTO NÃO
+ * corresponde à letra `N` ("inconsistente"). Com os 3 incompletos na fila,
+ * `consistency=N` devolve ZERO; eles estão em `consistency=I` ("inclusão").
+ * Quem quisesse listá-los pela letra N não acharia nada, sem erro nenhum.
+ *
+ * Também ficam de fora, por pedido explícito:
+ *
+ * - REPROVADOS (`statusApproval: "A"`). E aqui mora a pior armadilha do
+ *   recurso: `authorization=N` ("aguardando autorização") devolve os
+ *   reprovados JUNTO. Reprovar não tira o contrato da fila de "aguardando" —
+ *   ele segue `isAuthorized: false`, e aparece tanto em `authorization=N`
+ *   quanto em `authorization=S` ("reprovados"). Confiando no nome do filtro,
+ *   a tool ofereceria para aprovar um contrato que alguém já reprovou.
+ *   Conferido em produção: CTS/324 e CTS/466 estavam nas duas listas.
+ *
+ * - CONCLUÍDOS e REVOGADOS (`status: "COMPLETED"` / `"RESCINDED"`). Não há
+ *   filtro de situação do contrato em `/supply-contracts/all`, então saem aqui,
+ *   depois da varredura. Em produção havia dois concluídos aguardando
+ *   autorização — que é o estado do ERP, mas não é algo a decidir.
+ */
+async function filaDeAprovacao({ buildingId } = {}) {
+  const varredura = await varrerContratos({
+    buildingId,
+    desde: INICIO_DA_FILA,
+    ate: hoje(),
+    autorizacao: AUTORIZACAO.aguardando,
+    consistencia: CONSISTENCIA.consistente,
+    aprovacao: APROVACAO.aprovado,
+  });
+  if (!varredura.success) return varredura;
+
+  return {
+    ...varredura,
+    contracts: varredura.contracts.filter((c) => !SITUACOES_FORA_DA_FILA.includes(c.status)),
+  };
+}
+
+/**
+ * O que está pendente num contrato — contrato novo ou aditivo.
+ *
+ * Aditivo pendente não tem endpoint próprio: é o contrato inteiro voltando a
+ * aguardar autorização, com `currentAuthorizationLevel: "ADDENDUM"`, e é
+ * aprovado pelo mesmo PATCH do contrato.
+ */
+function tipoDePendencia(contrato) {
+  return contrato.currentAuthorizationLevel === "ADDENDUM" ? "aditivo" : "contrato";
+}
+
+/**
+ * Os aditivos mais recentes de um contrato, com o que cada um mudou.
+ *
+ * A API NÃO DIZ QUAL aditivo está pendente — `AddendumDTO` não tem situação de
+ * aprovação. O mais recente é o candidato óbvio (nos dois casos reais, ele foi
+ * registrado dias antes da consulta), mas é indício, não dado. Por isso a
+ * resposta chama de `aditivo_mais_recente`, e não de "aditivo pendente".
+ *
+ * O número do aditivo é sequencial POR OBRA, então o mais recente é tomado
+ * obra a obra.
+ */
+async function aditivosMaisRecentes(contrato) {
+  const lista = await buscarAditivos({
+    documentId: contrato.documentId,
+    contractNumber: contrato.contractNumber,
+    limit: 200,
+  });
+  if (!lista.success) return { erro: lista.details ?? lista.message };
+
+  const porObra = new Map();
+  for (const aditivo of lista.addenda) {
+    const atual = porObra.get(aditivo.buildingId);
+    if (!atual || Number(aditivo.addendumNumber) > Number(atual.addendumNumber)) {
+      porObra.set(aditivo.buildingId, aditivo);
+    }
   }
 
-  const fila = await listarContratos({ obra, desde, ate, situacao: "aguardando" });
-  if (!fila.success) return fila;
-
-  const resolverObra = criarResolverObra();
-  const contratos = [];
-  for (const contrato of fila.contracts) {
-    const obras = await buscarObrasDoContrato(contrato.documentId, contrato.contractNumber, {
-      limit: 50,
-    });
-    contratos.push({
-      ...contrato,
-      buildings: obras.success
-        ? await Promise.all(
-            obras.buildings.map(async (b) => ({
-              id: idDaObra(b),
-              name: b.buildingName ?? (await resolverObra(idDaObra(b)))?.name ?? null,
-            }))
-          )
+  const recentes = [];
+  for (const aditivo of porObra.values()) {
+    const itens = await buscarItensDoAditivo(
+      contrato.documentId,
+      contrato.contractNumber,
+      aditivo.buildingId,
+      aditivo.addendumNumber,
+      { limit: MAX_ITENS_NA_FILA }
+    );
+    recentes.push({
+      numero: aditivo.addendumNumber,
+      obra: contrato.buildings?.find((b) => b.buildingId === aditivo.buildingId)?.name ?? aditivo.buildingId,
+      data: aditivo.addendumDate,
+      descricao: aditivo.addendumDescription,
+      registrado_por: aditivo.registrationUserName,
+      // O valor do aditivo é a VARIAÇÃO que ele aplica — pode ser negativo, e
+      // em produção há aditivo de -7.100 ("Disco").
+      variacao_valor: somar(aditivo.totalMaterialValue, aditivo.totalLaborValue),
+      itens_alterados: itens.success
+        ? itens.addendumItems.map((i) => ({
+            descricao: i.description,
+            unidade: i.unitOfMeasure,
+            variacao_quantidade: i.quantityChange,
+            preco_novo: somar(i.newMaterialPrice, i.newLaborPrice),
+            variacao_custo: i.totalCostChange,
+          }))
         : [],
     });
   }
 
-  const resultado = {
-    success: true,
-    count: contratos.length,
-    janela: fila.janela,
-    contracts: contratos,
+  return { total_de_aditivos: lista.addenda.length, recentes };
+}
+
+/**
+ * Os itens de todas as planilhas do contrato, só os mensuráveis, com teto.
+ *
+ * Item agrupador fica de fora: não tem preço e, na fila, só ocupa espaço. O
+ * teto existe porque nove contratos com duzentos itens cada estourariam o
+ * contexto do modelo — e o que passa do teto é CONTADO na resposta, nunca
+ * cortado em silêncio.
+ */
+async function itensParaAprovacao(contrato) {
+  const obras = await buscarObrasDoContrato(contrato.documentId, contrato.contractNumber, {
+    limit: 50,
+  });
+  if (!obras.success) return { itens: [], total: 0, erro: obras.details ?? obras.message };
+
+  const todos = [];
+  for (const obra of obras.buildings) {
+    for (const unidade of obra.constructUnits ?? []) {
+      const itens = await buscarItensDoContrato(
+        contrato.documentId,
+        contrato.contractNumber,
+        idDaObra(obra),
+        unidade.id,
+        { limit: 200 }
+      );
+      if (!itens.success) continue;
+      for (const item of itens.items.map(resumirItemDeContrato)) {
+        if (item.mensuravel) todos.push(item);
+      }
+    }
+  }
+
+  return {
+    total: todos.length,
+    itens: todos.slice(0, MAX_ITENS_NA_FILA).map((i) => ({
+      descricao: i.detailDescription ? `${i.description} — ${i.detailDescription}` : i.description,
+      quantidade: i.quantity,
+      unidade: i.unitOfMeasure,
+      preco_unitario: i.precoUnitario,
+      valor: i.valorTotal,
+    })),
   };
-  if (semFiltro) filaDeContratos = { em: agora, valor: resultado };
-  return resultado;
+}
+
+/**
+ * Contratos e aditivos pendentes de aprovação, prontos para decidir.
+ *
+ * É a resposta de "quais contratos estão pendentes de aprovação?" numa chamada
+ * só: fornecedor, obra, valor, prazo, o MOTIVO de estar pendente, os itens com
+ * preço unitário e, quando é aditivo, o que o aditivo mais recente mudou. Tudo
+ * isso vem de cinco endpoints; as chamadas acontecem aqui dentro, onde são de
+ * graça, e não como uma sequência de tools, onde cada passo reenviaria a
+ * conversa inteira.
+ *
+ * O fornecedor sai da própria listagem (`supplierName`) — sem chamada extra.
+ *
+ * @param {object} [args]
+ * @param {string} [args.obra] nome (ou parte) da obra
+ */
+export async function listarContratosPendentesDeAprovacao({ obra } = {}) {
+  let buildingId, obraResolvida;
+  if (obra) {
+    obraResolvida = await resolverIdDaObraPorNome(obra);
+    if (!obraResolvida.success) return obraResolvida;
+    buildingId = obraResolvida.id;
+  }
+
+  const fila = await filaDeAprovacao({ buildingId });
+  if (!fila.success) return fila;
+
+  const contratos = await emParalelo(fila.contracts, PARALELISMO, async (c) => {
+    const tipo = tipoDePendencia(c);
+    const [itens, aditivos] = await Promise.all([
+      itensParaAprovacao(c),
+      tipo === "aditivo" ? aditivosMaisRecentes(c) : Promise.resolve(null),
+    ]);
+
+    return {
+      contrato: `${c.documentId}/${c.contractNumber}`,
+      tipo,
+      objeto: String(c.object ?? "").replace(/\s+/g, " ").trim(),
+      fornecedor: c.supplierName ?? null,
+      obras: (c.buildings ?? []).map((b) => b.name),
+      valor_total: somar(c.totalMaterialValue, c.totalLaborValue),
+      prazo: prazo(c),
+      situacao: c.status,
+      // O Sienge devolve isto num campo chamado `disapprovalReason`, mas o que
+      // vem ali é o motivo de o contrato ESTAR PENDENTE ("valor total excede o
+      // limite permitido para o usuário", "manutenção de aditivos"), não o de
+      // uma reprovação. É o que quem aprova mais precisa ler.
+      motivo_da_pendencia: (c.disapprovalReason ?? []).map((m) => String(m).replace(/^\(\d+\)\s*/, "")),
+      itens: itens.itens,
+      ...(itens.total > itens.itens.length
+        ? { itens_omitidos: itens.total - itens.itens.length }
+        : {}),
+      ...(aditivos ? { aditivos } : {}),
+    };
+  });
+
+  const aditivos = contratos.filter((c) => c.tipo === "aditivo").length;
+
+  return {
+    success: true,
+    message:
+      contratos.length === 0
+        ? `Nenhum contrato pendente de aprovação${obraResolvida ? ` na obra ${obraResolvida.name}` : ""}.`
+        : `${contratos.length} pendente(s) de aprovação: ${contratos.length - aditivos} contrato(s) ` +
+          `e ${aditivos} aditivo(s).`,
+    ...(obraResolvida ? { obra: obraResolvida.name } : {}),
+    count: contratos.length,
+    contratos,
+    ...(contratos.some((c) => c.itens_omitidos)
+      ? { sobre_itens: `Até ${MAX_ITENS_NA_FILA} itens por contrato; o resto está contado em 'itens_omitidos' e sai inteiro em contratos_detalhar.` }
+      : {}),
+  };
 }
 
 /**
@@ -1089,26 +1314,62 @@ function validarDecisao(decisao) {
 }
 
 /**
- * Autoriza ou reprova contratos, conferindo antes contra a fila real.
+ * Lê uma referência de contrato do jeito que a pessoa escreve.
  *
- * TRÊS MODOS, numa função só, para não obrigar quem chama a encadear:
+ * "CTS/524", "CTS 524", "cts-524" ou só "524". O documento é opcional porque
+ * quase ninguém o sabe — e só faz falta quando o mesmo número aparece em dois
+ * documentos na fila, caso em que a conferência devolve os candidatos.
+ */
+function lerReferencia(texto) {
+  const partes = String(texto ?? "")
+    .trim()
+    .split(/[^A-Za-z0-9]+/)
+    .filter(Boolean);
+
+  if (partes.length >= 2 && /^[A-Za-z]+$/.test(partes[0])) {
+    return { documento: partes[0].toUpperCase(), numero: partes.slice(1).join("") };
+  }
+  return { documento: null, numero: partes.join("") };
+}
+
+/** Linha de prévia de um contrato — o suficiente para reconhecer o que vai ser aprovado. */
+function retratoParaDecisao(c) {
+  return {
+    contrato: `${c.documentId}/${c.contractNumber}`,
+    tipo: tipoDePendencia(c),
+    objeto: String(c.object ?? "").replace(/\s+/g, " ").trim(),
+    fornecedor: c.supplierName ?? null,
+    obras: (c.buildings ?? []).map((b) => b.name),
+    valor_total: somar(c.totalMaterialValue, c.totalLaborValue),
+  };
+}
+
+/**
+ * Aprova ou reprova contratos e aditivos, conferindo contra a fila real.
  *
- *   sem `contratos`                  → devolve a fila, sem gravar
- *   com `contratos`, sem confirmar   → prévia do que seria decidido
- *   com `contratos` e confirmar      → grava
+ * `contratos` é OBRIGATÓRIO. Não existe "aprovar tudo que estiver pendente":
+ * quem aprova passa a lista do que viu. "Aprova todos" vira, do lado do
+ * assistente, a lista inteira que ele acabou de mostrar — e é isso que impede
+ * aprovar um contrato que entrou na fila DEPOIS da listagem, sem ninguém ter
+ * olhado para ele. Um `todos: true` faria exatamente isso.
  *
- * IRREVERSÍVEL pela API, e NÃO ATÔMICO entre contratos: cada um é um PATCH
- * próprio. O retorno diz, um a um, o que passou e o que não passou.
+ * A fila é relida nas duas chamadas, prévia e execução, sem cache. Ela custa
+ * uma requisição só (é a fila crua, sem itens), então não há por que arriscar
+ * decidir sobre uma foto velha.
+ *
+ * O que estava na fila e NÃO foi pedido volta em `continuam_pendentes`, na
+ * prévia e no resultado: se a intenção era "todos", a falta aparece.
+ *
+ * IRREVERSÍVEL pela API, e NÃO ATÔMICO: cada contrato é um PATCH próprio, e o
+ * retorno diz um a um o que passou.
  *
  * O aviso ao responsável só sai se o ERP estiver parametrizado como "Sempre
  * enviar aviso ao responsável" — é o próprio spec que condiciona o envio.
- * (Não confundir com o e-mail que a aprovação de PEDIDO DE COMPRA não dispara
- * por bug de paridade; ali a tela envia e o endpoint não.)
  *
  * @param {object} args
- * @param {Array<{contrato: string, documento?: string, observacao?: string}>} [args.contratos]
+ * @param {Array<string>} args.contratos referências como "CTS/524" ou "524"
  * @param {"aprovar"|"reprovar"} [args.decisao="aprovar"]
- * @param {string} [args.observacao] observação aplicada a todos; até 300 caracteres
+ * @param {string} [args.observacao] gravada junto de cada decisão; até 300 caracteres
  * @param {boolean} [args.confirmar=false]
  */
 export async function decidirContratos({
@@ -1121,98 +1382,84 @@ export async function decidirContratos({
   if (invalida) return invalida;
 
   if (!contratos?.length) {
-    const fila = await listarContratosParaAutorizacao();
-    if (!fila.success) return fila;
     return {
-      success: true,
-      modo: "listagem",
+      success: false,
+      error: "ContratosNaoInformados",
       message:
-        fila.count === 0
-          ? "Nenhum contrato aguardando autorização na janela padrão."
-          : `${fila.count} contrato(s) aguardando autorização. Nada foi gravado — para ` +
-            `decidir, chame de novo informando 'contratos'.`,
-      janela: fila.janela,
-      count: fila.count,
-      contracts: fila.contracts,
+        "Informe quais contratos decidir. Para ver o que está pendente, use " +
+        "contratos_pendentes_aprovacao — e mostre a lista ao usuário antes de decidir.",
     };
   }
 
-  // A prévia pode sair do cache; a execução relê a fila. Ver o comentário do
-  // bloco de filas.
-  const fila = await listarContratosParaAutorizacao({ fresca: confirmar });
+  const fila = await filaDeAprovacao();
   if (!fila.success) return fila;
 
   const alvos = [];
   const pendencias = [];
+  const vistos = new Set();
 
-  for (const [indice, pedido] of contratos.entries()) {
-    const numero = String(pedido?.contrato ?? "").trim();
-    const nome = `contratos[${indice}]`;
+  for (const [indice, bruto] of contratos.entries()) {
+    const onde = `contratos[${indice}]`;
+    const { documento, numero } = lerReferencia(typeof bruto === "object" ? bruto?.contrato : bruto);
 
     if (!numero) {
-      pendencias.push({
-        onde: nome,
-        tipo: "Faltando",
-        message: `${nome}: informe o número do contrato.`,
-      });
+      pendencias.push({ onde, tipo: "Faltando", message: `${onde}: referência vazia.` });
       continue;
     }
 
     const candidatos = fila.contracts.filter(
       (c) =>
         normalizar(c.contractNumber) === normalizar(numero) &&
-        (!pedido.documento || normalizar(c.documentId) === normalizar(pedido.documento))
+        (!documento || normalizar(c.documentId) === normalizar(documento))
     );
 
     if (candidatos.length === 0) {
       pendencias.push({
-        onde: nome,
+        onde,
         tipo: "ForaDaFila",
         message:
-          `${nome}: o contrato ${numero} não está aguardando autorização. Ou já foi ` +
-          `decidido por outra pessoa, ou tem data fora da janela varrida ` +
-          `(${fila.janela.contractStartDate} a ${fila.janela.contractEndDate}).`,
+          `${onde}: ${documento ? `${documento}/` : ""}${numero} não está na fila de aprovação. ` +
+          `Ficam de fora os já decididos, os reprovados, os concluídos, os revogados e os ` +
+          `com cadastro ainda em inclusão — ou o número não confere.`,
       });
       continue;
     }
     if (candidatos.length > 1) {
       pendencias.push({
-        onde: nome,
+        onde,
         tipo: "Ambiguo",
-        message:
-          `${nome}: ${candidatos.length} contratos na fila têm o número ${numero} — ` +
-          `informe também 'documento'.`,
-        candidatos: candidatos.map((c) => ({ documento: c.documentId, contrato: c.contractNumber })),
+        message: `${onde}: o número ${numero} aparece em ${candidatos.length} documentos na fila — escreva com o documento.`,
+        candidatos: candidatos.map((c) => `${c.documentId}/${c.contractNumber}`),
       });
       continue;
     }
 
-    alvos.push({ contrato: candidatos[0], observacao: pedido.observacao ?? observacao });
+    const chave = `${candidatos[0].documentId}/${candidatos[0].contractNumber}`;
+    if (vistos.has(chave)) continue; // repetido na lista: decide uma vez só
+    vistos.add(chave);
+    alvos.push(candidatos[0]);
   }
 
+  // Validação inteira antes de gravar qualquer coisa: um número errado no meio
+  // da lista não pode deixar metade aprovada.
   if (pendencias.length) {
     return {
       success: false,
       error: "DadosPendentes",
       message:
-        `Nada foi gravado. ${pendencias.length} ponto(s) a resolver — todos abaixo, para ` +
-        `você tratar de uma vez.`,
+        `Nada foi ${DECISOES[decisao].participio}. ${pendencias.length} referência(s) a ` +
+        `resolver — todas abaixo, para tratar de uma vez.`,
       pendencias,
+      pendentes_na_fila: fila.contracts.map((c) => `${c.documentId}/${c.contractNumber}`),
     };
   }
 
-  const previa = alvos.map(({ contrato, observacao: obs }) => ({
-    documento: contrato.documentId,
-    contrato: contrato.contractNumber,
-    object: contrato.object,
-    supplier: contrato.supplier?.name ?? contrato.supplierId,
-    obras: contrato.buildings?.map((b) => b.name ?? b.id),
-    totalMaterialValue: contrato.totalMaterialValue,
-    totalLaborValue: contrato.totalLaborValue,
-    consistent: contrato.consistent,
-    currentAuthorizationLevel: contrato.currentAuthorizationLevel,
-    ...(obs ? { observacao: obs } : {}),
-  }));
+  const continuamPendentes = fila.contracts
+    .filter((c) => !vistos.has(`${c.documentId}/${c.contractNumber}`))
+    .map(retratoParaDecisao);
+
+  const previa = alvos.map(retratoParaDecisao);
+  const valor = previa.reduce((soma, c) => soma + (c.valor_total ?? 0), 0);
 
   if (!confirmar) {
     return {
@@ -1220,42 +1467,41 @@ export async function decidirContratos({
       confirmacao_pendente: true,
       decisao,
       message:
-        `Nada foi gravado. ${alvos.length} contrato(s) seriam ${DECISOES[decisao].participio}s. ` +
-        `Confira abaixo e, se estiver certo, chame de novo com confirmar: true e os MESMOS ` +
-        `argumentos. A ${DECISOES[decisao].acao} é irreversível por esta API.`,
+        `Nada foi gravado. ${alvos.length} de ${fila.contracts.length} pendente(s) seriam ` +
+        `${DECISOES[decisao].participio}s, somando ${valor.toFixed(2)}. Confira e chame de novo ` +
+        `com confirmar: true e os MESMOS contratos. A ${DECISOES[decisao].acao} é IRREVERSÍVEL ` +
+        `por esta API.`,
       previa,
+      ...(continuamPendentes.length ? { continuam_pendentes: continuamPendentes } : {}),
     };
   }
 
-  const resultados = [];
-  for (const { contrato, observacao: obs } of alvos) {
+  const resultados = await emParalelo(alvos, PARALELISMO, async (c) => {
     const executar = decisao === "aprovar" ? autorizarContrato : reprovarContrato;
-    const resposta = await executar(contrato.documentId, contrato.contractNumber, {
-      observation: obs,
-    });
-
-    resultados.push({
-      documento: contrato.documentId,
-      contrato: contrato.contractNumber,
+    const resposta = await executar(c.documentId, c.contractNumber, { observation: observacao });
+    return {
+      contrato: `${c.documentId}/${c.contractNumber}`,
       success: resposta.success,
-      message: resposta.success ? resposta.message : (resposta.details ?? resposta.message),
-    });
-  }
+      ...(resposta.success
+        ? {}
+        : { motivo: resposta.details ?? resposta.message, ...(resposta.campos_invalidos ? { campos_invalidos: resposta.campos_invalidos } : {}) }),
+    };
+  });
 
-  // A fila em cache ficou velha no instante em que a primeira decisão gravou.
-  filaDeContratos = null;
+  const ok = resultados.filter((r) => r.success);
+  const falhas = resultados.filter((r) => !r.success);
 
-  const ok = resultados.filter((r) => r.success).length;
   return {
-    success: ok > 0,
+    success: ok.length > 0,
     decisao,
     message:
-      ok === resultados.length
-        ? `✅ ${ok} contrato(s) ${DECISOES[decisao].participio}s.`
-        : `⚠️ ${ok} de ${resultados.length} contrato(s) ${DECISOES[decisao].participio}s — ` +
-          `cada contrato é uma chamada própria, então o resto não foi desfeito.`,
+      falhas.length === 0
+        ? `✅ ${ok.length} contrato(s) ${DECISOES[decisao].participio}s.`
+        : `⚠️ ${ok.length} de ${resultados.length} ${DECISOES[decisao].participio}s; ` +
+          `${falhas.length} recusado(s) pelo Sienge — ver 'resultados'. Cada contrato é uma ` +
+          `chamada própria: os que passaram continuam ${DECISOES[decisao].participio}s.`,
     resultados,
-    previa,
+    ...(continuamPendentes.length ? { continuam_pendentes: continuamPendentes } : {}),
   };
 }
 

@@ -57,6 +57,9 @@ export function erroSienge(status, developerMessage, campos = []) {
  * @param {object} [cfg.contrato] retorno de GET /supply-contracts (um contrato)
  * @param {Array} [cfg.obrasDoContrato] retorno de GET /supply-contracts/buildings
  * @param {Array} [cfg.itensDoContrato] retorno de GET /supply-contracts/items
+ * @param {Array} [cfg.aditivos] retorno de GET /supply-contracts/addenda
+ * @param {Array} [cfg.itensDoAditivo] retorno de GET /supply-contracts/addenda/items
+ * @param {function} [cfg.decidirContrato] (documentId, contractNumber, operacao) => {status, body}
  * @param {Array} [cfg.anexos] retorno de GET /supply-contracts/attachments/all
  * @param {object} [cfg.conteudoAnexo] mapa número -> string｜Buffer com os bytes,
  *   ou {status, body} para simular falha de um anexo só
@@ -66,7 +69,7 @@ export function erroSienge(status, developerMessage, campos = []) {
 export async function iniciarSienge(cfg = {}) {
   const chamadas = [];
   const queries = [];
-  const recebido = { cabecalho: null, itens: null, autorizacoes: [], pedidos: [] };
+  const recebido = { cabecalho: null, itens: null, autorizacoes: [], pedidos: [], contratos: [] };
 
   const servidor = http.createServer(async (req, res) => {
     const url = new URL(req.url, "http://interno");
@@ -112,6 +115,12 @@ export async function iniciarSienge(cfg = {}) {
       }
       // Contratos de suprimentos. A ordem importa: "/supply-contracts" é
       // prefixo de todas as outras rotas do recurso, então ele vem por último.
+      if (url.pathname.endsWith("/supply-contracts/addenda/items")) {
+        return res.end(pagina(cfg.itensDoAditivo ?? [], url));
+      }
+      if (url.pathname.endsWith("/supply-contracts/addenda")) {
+        return res.end(pagina(cfg.aditivos ?? [], url));
+      }
       if (url.pathname.endsWith("/supply-contracts/attachments/all")) {
         return res.end(pagina(cfg.anexos ?? [], url));
       }
@@ -133,7 +142,23 @@ export async function iniciarSienge(cfg = {}) {
         return res.end(Buffer.isBuffer(conteudo) ? conteudo : Buffer.from(conteudo));
       }
       if (url.pathname.endsWith("/supply-contracts/all")) {
-        return res.end(pagina(cfg.contratos ?? [], url));
+        // O filtro de consistência reproduz o que PRODUÇÃO respondeu, não o
+        // que o spec sugere: `S` traz os completos, `I` traz os com
+        // `consistent: false` — e `N`, apesar de "inconsistente", traz nada.
+        const porConsistencia = {
+          S: (c) => c.consistent !== false,
+          I: (c) => c.consistent === false,
+          N: () => false,
+        }[url.searchParams.get("consistency")] ?? (() => true);
+        // `statusApproval` separa reprovados — e só ele: `authorization=N` traz
+        // os reprovados junto, como em produção.
+        const porAprovacao = {
+          A: (c) => c.statusApproval !== "DISAPPROVED",
+          D: (c) => c.statusApproval === "DISAPPROVED",
+        }[url.searchParams.get("statusApproval")] ?? (() => true);
+        return res.end(
+          pagina((cfg.contratos ?? []).filter(porConsistencia).filter(porAprovacao), url)
+        );
       }
       if (url.pathname.endsWith("/supply-contracts/buildings")) {
         return res.end(pagina(cfg.obrasDoContrato ?? [], url));
@@ -166,6 +191,26 @@ export async function iniciarSienge(cfg = {}) {
         }
         return res.end(JSON.stringify(dados));
       }
+    }
+
+    // Decisão sobre o CONTRATO. Só PATCH, e a identidade vem na QUERY — é o
+    // que o teste precisa enxergar, porque montar isso em path dá 404 em
+    // produção.
+    const decisaoDeContrato = url.pathname.match(/\/supply-contracts\/(authorize|disapprove)$/);
+    if (decisaoDeContrato && req.method === "PATCH") {
+      const documentId = url.searchParams.get("documentId");
+      const contractNumber = url.searchParams.get("contractNumber");
+      recebido.contratos.push({
+        documentId,
+        contractNumber,
+        decisao: decisaoDeContrato[1] === "authorize" ? "aprovar" : "reprovar",
+        corpo: await corpo(),
+      });
+      const r = cfg.decidirContrato
+        ? cfg.decidirContrato(documentId, contractNumber, decisaoDeContrato[1])
+        : { status: 204 };
+      res.statusCode = r.status;
+      return res.end(r.body ? (typeof r.body === "string" ? r.body : JSON.stringify(r.body)) : "");
     }
 
     // Decisão sobre o PEDIDO. PUT quando não há observação, PATCH quando há —

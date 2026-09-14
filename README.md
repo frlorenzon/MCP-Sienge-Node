@@ -18,9 +18,9 @@ npx -y mcp-sienge-node
 
 JavaScript puro (ESM), sem etapa de build e sem dependência além do SDK do MCP.
 
-> ⚠️ **ALFA — 0.12.2.** Em reescrita. A arquitetura mudou por inteiro na série 0.7 e
+> ⚠️ **ALFA — 0.13.0.** Em reescrita. A arquitetura mudou por inteiro na série 0.7 e
 > nomes de tool, formato de retorno e variáveis de ambiente ainda vão mudar sem
-> aviso. O módulo de compras já **grava no ERP**: use primeiro num ambiente de
+> aviso. Compras e contratos já **gravam no ERP**: use primeiro num ambiente de
 > homologação, e leia a seção [Antes de apontar para produção](#antes-de-apontar-para-produção).
 
 ## Instalação no Claude Desktop
@@ -113,7 +113,7 @@ agrupado por assunto:
 |---|---|---|---|
 | núcleo | *(sempre carregado)* | 3 | diagnóstico, credencial, conexão |
 | `compras` | `carregar_compras` | 7 | solicitação, pedido, aprovação, recebimento |
-| `contratos` | `carregar_contratos` | 2 | contrato de suprimentos e seus anexos |
+| `contratos` | `carregar_contratos` | 4 | contrato de suprimentos, anexos e aprovação |
 | `financeiro` | `carregar_financeiro` | 1 | contas a pagar e receber *(esqueleto)* |
 
 Na prática: alguém pergunta **"quais pedidos estão esperando aprovação?"**. O
@@ -127,8 +127,8 @@ O que isso poupa, medido no catálogo real deste servidor:
 | Sessão | O que fica carregado | Custo por mensagem |
 |---|---|---|
 | só compras | núcleo + compras | ~8,4 KB |
-| só contratos | núcleo + contratos | ~3,2 KB |
-| tudo carregado | núcleo + os três módulos | ~11 KB |
+| só contratos | núcleo + contratos | ~5 KB |
+| tudo carregado | núcleo + os três módulos | ~12,8 KB |
 
 A diferença parece pequena em bytes e não é: ela é **multiplicada pelo número
 de mensagens da conversa**. Numa conversa de trinta trocas sobre compras,
@@ -175,7 +175,7 @@ suprimentos, que é onde a obra contrata serviço e paga por medição.
 |---|---|---|
 | `nucleo` | 3 | ✅ diagnóstico e autenticação |
 | `compras` | 7 | 🔨 solicitação e pedido; falta cotação e nota fiscal |
-| `contratos` | 2 | 🔨 consulta e anexos; o resto do ciclo está pronto em `client/`, sem tool |
+| `contratos` | 4 | 🔨 consulta, anexos e aprovação; medição pronta em `client/`, sem tool |
 | `financeiro` | 1 | ⚠️ apenas um esqueleto de teste, não lê nada do ERP |
 
 ### As tools de hoje
@@ -194,6 +194,8 @@ suprimentos, que é onde a obra contrata serviço e paga por medição.
 | `compras_pedidos_pendentes_recebimento` | o que foi aprovado e ainda não chegou |
 | `contratos_detalhar` | tudo de um contrato numa chamada: fornecedor, valor, prazo, saldo e os itens com preço unitário |
 | `contratos_baixar_anexos` | salva os anexos do contrato numa pasta local e devolve o caminho |
+| `contratos_pendentes_aprovacao` | contratos e aditivos pendentes, com fornecedor, valor, prazo, motivo e itens |
+| `contratos_decidir` | aprova ou reprova os contratos escolhidos, conferindo contra a fila real e com prévia |
 | `carregar_compras` / `carregar_contratos` / `carregar_financeiro` | trazem as tools do módulo |
 | `descarregar_modulos` | libera o contexto dos módulos carregados |
 
@@ -223,10 +225,11 @@ do processo de compra: é o caminho alternativo. A compra termina numa
 **entrega**; o contrato, numa **medição** — alguém confere quanto do serviço
 foi executado, e é isso que vira conta a pagar.
 
-O módulo expõe **duas tools**: `contratos_detalhar` e
-`contratos_baixar_anexos`. O resto do ciclo já está implementado e testado em
+O módulo expõe **quatro tools**: `contratos_detalhar`,
+`contratos_baixar_anexos`, `contratos_pendentes_aprovacao` e
+`contratos_decidir`. O resto do ciclo já está implementado e testado em
 `client/supplyContractClient.js`, sem tool declarada — porque tool parada custa
-tokens em toda mensagem, e porque três dessas funções gravam no ERP.
+tokens em toda mensagem, e porque as escritas de medição gravam no ERP.
 
 | Etapa | Client | Tool |
 |---|---|---|
@@ -234,7 +237,8 @@ tokens em toda mensagem, e porque três dessas funções gravam no ERP.
 | Contrato — listar por obra e período | ✅ | — |
 | Anexos — baixar | ✅ | ✅ `contratos_baixar_anexos` |
 | Anexos — anexar | ❌ | — |
-| Contrato — autorizar e reprovar | ✅ | — ✏️ grava |
+| Contrato e aditivo — listar pendentes | ✅ | ✅ `contratos_pendentes_aprovacao` |
+| Contrato e aditivo — aprovar e reprovar | ✅ | ✅ `contratos_decidir` ✏️ grava |
 | Medição — consultar | ✅ | — |
 | Medição — criar | ✅ | — ✏️ grava |
 | Medição — autorizar e reprovar | ✅ | — ✏️ grava |
@@ -252,9 +256,8 @@ Três coisas deste recurso não se adivinham, e as tools já as tratam por dentr
   mostra é derivado da última medição e vai rotulado como tal; ele ignora
   aditivo posterior, então estourá-lo é aviso, nunca bloqueio.
 
-**Nenhuma escrita de contrato está exposta como tool hoje** — as três existem
-no client e esperam ser pedidas. As escritas ativas do servidor continuam sendo
-as três de compras.
+**Uma escrita de contrato está exposta: decidir** (aprovar ou reprovar). Criar
+medição e decidir medição existem no client e esperam ser pedidas.
 
 ## Como `contratos_detalhar` resolve um contrato
 
@@ -334,6 +337,60 @@ Uma regra atravessa todas: **ausência não vira zero**. `saldo_total` some da
 resposta quando a API não mandou o campo, em vez de virar `0` — saldo zero é
 "acabou", saldo ausente é "não sei", e a listagem nunca traz saldo.
 
+## Como a aprovação de contratos funciona
+
+Duas perguntas, duas tools:
+
+> **"Quais contratos estão pendentes de aprovação no Sienge?"**
+> → `contratos_pendentes_aprovacao`
+>
+> **"Aprova o CTS/524 e o CTS/596"**, **"aprova todos"** ou **"reprova o CTS/596"**
+> → `contratos_decidir`
+
+**A lista vem completa numa chamada.** Para cada pendente: fornecedor, obra,
+valor, prazo, o **motivo** de estar pendente — o Sienge informa, por exemplo,
+*"valor total do contrato excede o limite permitido para o usuário"* — e os
+itens com preço unitário. Nada disso exige o assistente chamar outra tool.
+
+**Aditivo aparece como aditivo.** O Sienge não tem aprovação separada de
+aditivo: quando um aditivo é registrado, o contrato inteiro volta a aguardar
+autorização, na alçada `ADDENDUM`, e é aprovado pelo mesmo caminho. A lista traz
+o que o aditivo mais recente mudou — mas **a API não diz qual aditivo está
+pendente**, então isso vai rotulado como "o mais recente", não como certeza.
+
+**"Aprova todos" não é um atalho.** Não existe "aprovar tudo que estiver
+pendente". O assistente passa a lista que acabou de mostrar — e é isso que
+impede aprovar um contrato que entrou na fila **depois** da listagem, sem
+ninguém ter olhado para ele. O que ficou de fora volta em `continuam_pendentes`.
+
+**Antes de gravar, a fila é relida.** Se outra pessoa aprovou um dos contratos
+nesse meio-tempo, ele não está mais lá e não é gravado. E se **uma** referência
+da lista estiver errada, **nenhuma** é aprovada — um número trocado no meio não
+deixa metade aprovada.
+
+**Aprovar e reprovar ficam na mesma tool**, escolhidos em `decisao`, e passam
+pela mesma conferência — nenhuma das duas tem volta. Sem `decisao`, a tool
+aprova; reprovar nunca é o padrão. Ao reprovar, o motivo vai em `observacao` e
+fica gravado no contrato.
+
+**Só aparece o que ainda está para decidir.** A fila "aguardando autorização"
+do Sienge traz mais do que o nome promete, e três grupos ficam de fora — da
+lista e da decisão:
+
+| Fica de fora | Por quê |
+|---|---|
+| Cadastro em inclusão | alguém ainda está cadastrando: valor zerado, sem obra |
+| Reprovados | reprovar **não** tira o contrato da fila de "aguardando" |
+| Concluídos e revogados | o contrato já terminou ou foi desfeito; não há o que autorizar |
+
+O segundo é o que mais engana. Em produção, dois contratos reprovados apareciam
+ao mesmo tempo no filtro de "aguardando autorização" e no de "reprovados".
+Confiando no nome do filtro, a tool ofereceria para aprovar o que alguém já
+reprovou. Dos 9 contratos que o Sienge chamava de pendentes, **3 eram de fato
+para decidir**.
+
+Uma recusa do Sienge num contrato não desfaz os outros.
+
 ## Antes de apontar para produção
 
 - **Comece em homologação.** Uma solicitação criada por engano não pode ser
@@ -355,6 +412,10 @@ resposta quando a API não mandou o campo, em vez de virar `0` — saldo zero é
   limitação deste servidor: é o endpoint que não executa o gatilho que a tela
   executa. O pedido fica aprovado e ninguém é avisado — combine o envio por
   fora. A tool repete esse aviso em toda resposta de aprovação.
+- **Aprovar ou reprovar contrato não tem volta.** A API não expõe endpoint que
+  desfaça nenhuma das duas. A tool relê a fila e exige `confirmar: true`, mas depois de
+  gravado só o ERP resolve. O aviso ao responsável só sai se o ERP estiver
+  parametrizado para sempre enviar.
 - **Baixar anexo escreve no seu disco, não no ERP.** Os arquivos vão para
   `SIENGE_PASTA_ANEXOS`, numa subpasta por contrato. A tool grava os bytes como
   vieram e **não lê o conteúdo** — não espere dela um resumo do PDF.
@@ -377,7 +438,7 @@ npm start
 npm test
 ```
 
-120 testes com o runner nativo do Node, sem dependência nenhuma. **Nenhum toca
+137 testes com o runner nativo do Node, sem dependência nenhuma. **Nenhum toca
 a API do Sienge** — sobem um servidor HTTP local que responde nos schemas de
 `spec/openapi.yaml`, então rodam offline e não consomem cota.
 

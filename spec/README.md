@@ -65,6 +65,8 @@ respondendo outra.
 |---|---|---|
 | `BuildingDTO` (`/supply-contracts/buildings`) | `buildingId`, `costCenterId`, `departmentId` | `buildingID`, `costCenterID`, `departmentID` |
 | `ConstructUnitDTO.status` | `L` / `B` | `RELEASED` |
+| filtro `consistency` em `/supply-contracts/all` | `N` = inconsistente | `N` devolve **nada**; os contratos com `consistent: false` estão em `I` (inclusão) |
+| filtro `authorization` em `/supply-contracts/all` | `N` = aguardando, `S` = reprovados | `N` traz os **reprovados junto** — eles aparecem em `N` e em `S`. Quem separa é `statusApproval=A` |
 
 E uma que não é de nome, mas de **valor**: `BuildingDTO` traz `buildingID`
 (interno) e `buildingIdView` (código da obra no Sienge), e é o **View** que

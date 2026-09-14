@@ -108,7 +108,7 @@ test("nenhuma tool de contrato grava sem ter sido pedida", () => {
   // das candidatas gravam em produção.
   assert.deepEqual(
     supplyContractModule.tools.map((t) => t.name),
-    ["contratos_detalhar", "contratos_baixar_anexos"]
+    ["contratos_detalhar", "contratos_baixar_anexos", "contratos_pendentes_aprovacao", "contratos_decidir"]
   );
 });
 
