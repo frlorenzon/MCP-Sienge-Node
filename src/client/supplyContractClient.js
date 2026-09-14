@@ -8,7 +8,7 @@
  * precisa, numa chamada só.
  *
  * O PROBLEMA CENTRAL DESTE MÓDULO É A IDENTIDADE. Quem pergunta diz "o
- * contrato de alvenaria da obra IU.06" ou "contrato 1234"; a API quer o par
+ * contrato de alvenaria da obra Residencial Aurora" ou "contrato 1234"; a API quer o par
  * (`documentId`, `contractNumber`) — e as medições querem, além disso, a obra
  * e um número de medição que é sequencial POR OBRA. Ninguém sabe de cabeça
  * que o documento é "CT". Então tudo aqui aceita nome e número soltos e
@@ -287,8 +287,8 @@ async function resolverIdDaObraPorNome(nome) {
       ? { ...achado, error: "ObraNaoEncontrada", message: `Nenhuma obra bate com '${nome}'.` }
       : { ...achado, error: "ObraAmbigua" };
   }
-  // O nome volta junto: quem confirma uma escrita precisa ver "IU.06 -
-  // Residencial Ipê Uva" na prévia, não só o id 30.
+  // O nome volta junto: quem confirma uma escrita precisa ver "OB.01 -
+  // Residencial Aurora" na prévia, não só o id 30.
   return { success: true, id: achado.valor.id, name: achado.valor.name };
 }
 
@@ -385,7 +385,7 @@ function raizComum(a, b) {
  * Ordena os contratos da janela pelo quanto cada objeto lembra o termo
  * buscado, e corta numa lista que ainda caiba numa resposta.
  *
- * O corte é o ponto: a obra IU.06 tem 75 contratos em quatro anos. Devolver os
+ * O corte é o ponto: uma obra de produção tem 75 contratos em quatro anos. Devolver os
  * 75 é ilegível e caro; devolver os 15 primeiros por data escondeu justamente
  * o contrato certo, que era o 43º. Ordenar por relevância põe os candidatos
  * plausíveis no topo antes de cortar.
@@ -424,7 +424,7 @@ function campo(objeto, ...nomes) {
  * spec devolve `undefined`.
  *
  * E o erro é dos piores porque só ÀS VEZES falha alto. Conferido em produção,
- * no contrato CTS/325 da obra iU.06:
+ * num contrato de produção:
  *
  *   GET /supply-contracts/items?buildingId=21   → 404 "Obra 21 não encontrada"
  *   GET /supply-contracts/all?buildingId=21     → 200 com 85 contratos de OUTRA obra
@@ -1698,7 +1698,7 @@ export async function decidirMedicoes({
 // CRIAÇÃO DE MEDIÇÃO
 // =========================================================
 // Quem mede fala em nomes: "medir 45 m² de alvenaria no contrato 1234 da obra
-// IU.06". O POST quer documentId, contractNumber, buildingId, buildingUnitId e
+// Residencial Aurora". O POST quer documentId, contractNumber, buildingId, buildingUnitId e
 // o itemId de cada item DENTRO da planilha. A tradução acontece toda aqui.
 
 /**

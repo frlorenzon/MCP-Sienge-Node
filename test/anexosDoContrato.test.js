@@ -27,7 +27,7 @@ const CONTRATO = {
 };
 
 const BASE = {
-  centros: [{ id: 20, name: "iU.06 SCP" }],
+  centros: [{ id: 20, name: "OB.01 - Residencial Aurora" }],
   credores: { 17: { id: 17, name: "Projetos Alfa Ltda", cnpj: "00000000000191" } },
   contratos: [CONTRATO],
   contrato: CONTRATO,

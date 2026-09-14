@@ -13,9 +13,9 @@ import assert from "node:assert/strict";
 import { iniciarSienge, carregarPurchaseClient, erroSienge } from "./helpers/fakeSienge.js";
 
 const CENTROS = [
-  { id: 30, name: "IU.06 - Residencial Ipê Uva" },
-  { id: 31, name: "IU.07 - Residencial Ipê Amarelo" },
-  { id: 32, name: "NAO USAR - IU.05 antiga" },
+  { id: 30, name: "OB.01 - Residencial Aurora" },
+  { id: 31, name: "OB.02 - Residencial Horizonte" },
+  { id: 32, name: "NAO USAR - OB.03 antiga" },
 ];
 
 // Insumo cadastrado em PEÇA, e não em metro: é o caso do tubo de esgoto,
@@ -46,7 +46,7 @@ const CENARIO = { centros: CENTROS, insumos: INSUMOS, planilha: PLANILHA };
 const NIVEL_2 = { env: { SIENGE_NIVEL_APROPRIACAO: "2" } };
 
 const PEDIDO = {
-  obra: "iu.06",
+  obra: "ob.01",
   itens: [{ insumo: "Tubo de Esgoto", detalhe: '2"', quantidade: 9 }],
   apropriacoes: [{ item: "02.032", percentual: 100 }],
 };
@@ -132,7 +132,7 @@ test("departamento e categoria vão no corpo quando configurados", async () => {
 
 test("sem quantidade, a pendência traz a unidade do insumo", async () => {
   await comSienge(NIVEL_2, async (criar) => {
-    const r = await criar({ obra: "iu.06", itens: [{ insumo: "Tubo de Esgoto", detalhe: '2"' }] });
+    const r = await criar({ obra: "ob.01", itens: [{ insumo: "Tubo de Esgoto", detalhe: '2"' }] });
     assert.equal(r.success, false);
     assert.equal(r.error, "DadosPendentes");
 
@@ -152,7 +152,7 @@ test("sem quantidade, a pendência traz a unidade do insumo", async () => {
 test("todas as pendências vêm juntas, não uma por vez", async () => {
   await comSienge(NIVEL_2, async (criar) => {
     const r = await criar({
-      obra: "iu.06",
+      obra: "ob.01",
       itens: [{ insumo: "tubo" }], // ambíguo, e sem quantidade
       apropriacoes: [{ item: "instalações", percentual: 100 }], // ambíguo
     });
@@ -160,13 +160,13 @@ test("todas as pendências vêm juntas, não uma por vez", async () => {
     const campos = r.pendencias.map((p) => p.campo).sort();
     assert.deepEqual(campos, ["apropriacoes[0].item", "itens[0].insumo", "itens[0].quantidade"]);
     // O que já resolveu vem junto, para não ser perguntado de novo.
-    assert.equal(r.resolvido.obra.name, "IU.06 - Residencial Ipê Uva");
+    assert.equal(r.resolvido.obra.name, "OB.01 - Residencial Aurora");
   });
 });
 
 test("sem o insumo identificado, a cobrança de quantidade não inventa unidade", async () => {
   await comSienge(NIVEL_2, async (criar) => {
-    const r = await criar({ obra: "iu.06", itens: [{ insumo: "tubo" }] });
+    const r = await criar({ obra: "ob.01", itens: [{ insumo: "tubo" }] });
     const quantidade = r.pendencias.find((p) => p.campo === "itens[0].quantidade");
     assert.ok(!("unidade_do_insumo" in quantidade));
     assert.match(quantidade.message, /só pode ser dita depois/);
@@ -251,7 +251,7 @@ test("unidade divergente vira aviso na prévia, não recusa", async () => {
 
 test("obra ambígua devolve candidatos em vez de escolher", async () => {
   await comSienge(NIVEL_2, async (criar) => {
-    const r = await criar({ ...PEDIDO, obra: "iu.0" });
+    const r = await criar({ ...PEDIDO, obra: "ob.0" });
     assert.equal(r.success, false);
     assert.equal(r.error, "ObraAmbigua");
     // Obra marcada "NAO USAR" nunca entra nos candidatos.
@@ -327,7 +327,7 @@ test("o orçamento é lido uma vez por chamada, não uma vez por apropriação",
 test("três insumos entram numa solicitação só", async () => {
   await comSienge(NIVEL_2, async (criar, sienge) => {
     const r = await criar({
-      obra: "iu.06",
+      obra: "ob.01",
       itens: [
         { insumo: "Tubo de Esgoto", detalhe: '2"', quantidade: 9 },
         { insumo: "Tubo de Esgoto", detalhe: '4"', quantidade: 4 },
@@ -351,7 +351,7 @@ test("três insumos entram numa solicitação só", async () => {
 test("o rateio da solicitação vale para os itens que não trazem o seu", async () => {
   await comSienge(NIVEL_2, async (criar, sienge) => {
     await criar({
-      obra: "iu.06",
+      obra: "ob.01",
       itens: [
         { insumo: "Tubo de Esgoto", detalhe: '2"', quantidade: 9 },
         {
@@ -373,7 +373,7 @@ test("o rateio da solicitação vale para os itens que não trazem o seu", async
 test("a pendência diz de qual item ela é", async () => {
   await comSienge(NIVEL_2, async (criar) => {
     const r = await criar({
-      obra: "iu.06",
+      obra: "ob.01",
       itens: [
         { insumo: "Tubo de Esgoto", detalhe: '2"', quantidade: 9 }, // ok
         { insumo: "Tubo de Esgoto", detalhe: '4"' }, // sem quantidade
@@ -399,7 +399,7 @@ test("a pendência diz de qual item ela é", async () => {
 test("o orçamento é lido uma vez, não uma vez por item", async () => {
   await comSienge(NIVEL_2, async (criar, sienge) => {
     await criar({
-      obra: "iu.06",
+      obra: "ob.01",
       itens: [
         { insumo: "Tubo de Esgoto", detalhe: '2"', quantidade: 9 },
         { insumo: "Tubo de Esgoto", detalhe: '4"', quantidade: 4 },
@@ -415,7 +415,7 @@ test("o orçamento é lido uma vez, não uma vez por item", async () => {
 test("cada item tem sua própria necessidade de entrega, com a quantidade dele", async () => {
   await comSienge(NIVEL_2, async (criar, sienge) => {
     await criar({
-      obra: "iu.06",
+      obra: "ob.01",
       itens: [
         { insumo: "Tubo de Esgoto", detalhe: '2"', quantidade: 9 },
         { insumo: "Tubo de Esgoto Reforçado", quantidade: 2 },
@@ -432,7 +432,7 @@ test("cada item tem sua própria necessidade de entrega, com a quantidade dele",
 
 test("lista de itens vazia recusa e explica que a solicitação comporta vários", async () => {
   await comSienge(NIVEL_2, async (criar, sienge) => {
-    const r = await criar({ obra: "iu.06", itens: [] });
+    const r = await criar({ obra: "ob.01", itens: [] });
     assert.equal(r.error, "ItensNaoInformados");
     assert.match(r.message, /vários insumos/);
     assert.equal(sienge.contar("POST"), 0);
@@ -442,7 +442,7 @@ test("lista de itens vazia recusa e explica que a solicitação comporta vários
 test("observação por item vira notes daquele item", async () => {
   await comSienge(NIVEL_2, async (criar, sienge) => {
     await criar({
-      obra: "iu.06",
+      obra: "ob.01",
       itens: [
         { insumo: "Tubo de Esgoto", detalhe: '2"', quantidade: 9, observacao: "laje do 3º" },
         { insumo: "Tubo de Esgoto Reforçado", quantidade: 2 },

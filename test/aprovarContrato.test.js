@@ -24,7 +24,7 @@ const NOVO = {
   object: "FORNECIMENTO DE BLOCO ESTRUTURAL.",
   supplierId: 41,
   supplierName: "Pré-Moldados Beta Ltda",
-  buildings: [{ buildingId: 21, name: "iU.07 - SCP" }],
+  buildings: [{ buildingId: 21, name: "OB.02 - Residencial Horizonte" }],
   contractDate: "2026-09-01",
   startDate: "2026-09-01",
   endDate: "2027-09-30",
@@ -66,8 +66,8 @@ const OBRA_DO_CONTRATO = [
   {
     buildingID: 22,
     buildingIdView: 21,
-    buildingName: "iU.07 - SCP",
-    constructUnits: [{ id: 1, name: "iU.07 - Obra", status: "RELEASED" }],
+    buildingName: "OB.02 - Residencial Horizonte",
+    constructUnits: [{ id: 1, name: "OB.02 - Obra", status: "RELEASED" }],
   },
 ];
 
@@ -86,7 +86,7 @@ const ITENS = [
 ];
 
 const CENARIO = {
-  centros: [{ id: 21, name: "iU.07 - SCP" }],
+  centros: [{ id: 21, name: "OB.02 - Residencial Horizonte" }],
   contratos: [NOVO, ADITIVO, INCONSISTENTE],
   obrasDoContrato: OBRA_DO_CONTRATO,
   itensDoContrato: ITENS,
@@ -114,7 +114,7 @@ test("a fila chega completa numa chamada: fornecedor, valor, prazo, motivo e ite
     assert.equal(novo.fornecedor, "Pré-Moldados Beta Ltda");
     assert.equal(novo.valor_total, 155488.28);
     assert.equal(novo.prazo.endDate, "2027-09-30");
-    assert.deepEqual(novo.obras, ["iU.07 - SCP"]);
+    assert.deepEqual(novo.obras, ["OB.02 - Residencial Horizonte"]);
     assert.equal(novo.itens.length, 1, "o agrupador fica de fora, o item com preço entra");
     assert.equal(novo.itens[0].preco_unitario, 3.75);
     assert.equal(novo.itens[0].valor, 108000);

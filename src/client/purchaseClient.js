@@ -150,8 +150,8 @@ async function resolverIdDaObraPorNome(nome) {
       candidatos: encontrados.map((c) => ({ id: c.id, name: c.name })),
     };
   }
-  // Devolve o nome junto: quem confirma uma escrita precisa ver "IU.06 -
-  // Residencial Ipê Uva" na prévia, não só o id 30.
+  // Devolve o nome junto: quem confirma uma escrita precisa ver "OB.01 -
+  // Residencial Aurora" na prévia, não só o id 30.
   return { success: true, id: encontrados[0].id, name: encontrados[0].name };
 }
 
@@ -528,7 +528,7 @@ export async function listarSolicitacoesParaAprovacao() {
 // =========================================================
 // CRIAÇÃO DE SOLICITAÇÃO (ETAPA 1 DO PROCESSO)
 // =========================================================
-// Quem pede fala em nomes — "obra iu.06", "tubo de esgoto", "instalações
+// Quem pede fala em nomes — "obra Residencial Aurora", "tubo de esgoto", "instalações
 // hidráulicas". O POST quer buildingId, productId, detailId e wbsCode. A
 // tradução acontece TODA aqui dentro, numa chamada só: se ela virasse uma
 // sequência de tools ("resolve obra", "resolve insumo", "resolve

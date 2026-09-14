@@ -43,7 +43,7 @@ function cabecalho(id, extra = {}) {
 
 // Fila com duas solicitações: a 19 com três itens, a 622 com um.
 const FILA = {
-  centros: [{ id: 11, name: "Residencial Ipê Uva" }],
+  centros: [{ id: 11, name: "Residencial Aurora" }],
   itensDeSolicitacao: [item(19, 1), item(19, 2), item(19, 3), item(622, 1)],
   cabecalhos: {
     19: cabecalho(19),

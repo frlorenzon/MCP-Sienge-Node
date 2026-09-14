@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
  *
  * `contratos_detalhar` — a tool que responde "me dê informações do contrato de
- * instalações hidrossanitárias da IU.06": fornecedor, itens com preço
+ * instalações hidrossanitárias da obra Residencial Aurora": fornecedor, itens com preço
  * unitário, valor, prazo e saldo, numa chamada só.
  *
  * Cada caso aqui corresponde a um jeito de a resposta sair errada SEM ERRO
@@ -16,7 +16,7 @@ import assert from "node:assert/strict";
 
 import { iniciarSienge, carregarSupplyContractClient } from "./helpers/fakeSienge.js";
 
-const CENTROS = [{ id: 30, name: "IU.06 - Residencial Ipê Uva" }];
+const CENTROS = [{ id: 30, name: "OB.01 - Residencial Aurora" }];
 
 const HIDRO = {
   documentId: "CT",
@@ -42,7 +42,7 @@ const PINTURA = {
 const OBRAS = [
   {
     buildingId: 30,
-    buildingName: "IU.06 - Residencial Ipê Uva",
+    buildingName: "OB.01 - Residencial Aurora",
     costCenterId: 30,
     constructUnits: [{ id: 2, name: "Torre A", status: "L" }],
   },
@@ -80,7 +80,7 @@ test("a varredura vai com período de 4 anos — sem ele a API recusa a listagem
   const { detalharContrato } = await carregarSupplyContractClient();
 
   try {
-    await detalharContrato({ contrato: "instalações hidrossanitárias", obra: "iu.06" });
+    await detalharContrato({ contrato: "instalações hidrossanitárias", obra: "ob.01" });
 
     const params = sienge.query("/supply-contracts/all");
     const inicio = new Date(`${params.contractStartDate}T12:00:00`);
@@ -103,7 +103,7 @@ test("valor, saldo e prazo são compostos — o Sienge não devolve nenhum dos t
   const { detalharContrato } = await carregarSupplyContractClient();
 
   try {
-    const r = await detalharContrato({ contrato: "1234", documento: "CT", obra: "iu.06" });
+    const r = await detalharContrato({ contrato: "1234", documento: "CT", obra: "ob.01" });
     assert.equal(r.success, true);
 
     assert.equal(r.contract.valor_total, 300000.75, "valor = material + mão de obra");
@@ -164,7 +164,7 @@ test("nome que não bate devolve os contratos da janela, não um 'não encontrad
   const { detalharContrato } = await carregarSupplyContractClient();
 
   try {
-    const r = await detalharContrato({ contrato: "impermeabilização", obra: "iu.06" });
+    const r = await detalharContrato({ contrato: "impermeabilização", obra: "ob.01" });
 
     assert.equal(r.success, false);
     assert.equal(r.error, "ContratoNaoEncontrado");
@@ -190,7 +190,7 @@ test("dois contratos batendo no mesmo termo viram candidatos com o par de cada u
   const { detalharContrato } = await carregarSupplyContractClient();
 
   try {
-    const r = await detalharContrato({ contrato: "instalações hidrossanitárias", obra: "iu.06" });
+    const r = await detalharContrato({ contrato: "instalações hidrossanitárias", obra: "ob.01" });
 
     assert.equal(r.success, false);
     assert.equal(r.error, "ContratoAmbiguo");
@@ -224,7 +224,7 @@ test("o plural do jeito que se fala acha o singular do jeito que está cadastrad
   try {
     const r = await detalharContrato({
       contrato: "instalações hidrossanitárias",
-      obra: "iu.06",
+      obra: "ob.01",
       incluir_itens: false,
     });
     assert.equal(r.success, true, JSON.stringify(r.message ?? ""));
@@ -255,7 +255,7 @@ test("sem casamento, a lista vem ordenada por relevância — não por data", as
   const { detalharContrato } = await carregarSupplyContractClient();
 
   try {
-    const r = await detalharContrato({ contrato: "instalações hidrossanitárias", obra: "iu.06" });
+    const r = await detalharContrato({ contrato: "instalações hidrossanitárias", obra: "ob.01" });
 
     assert.equal(r.success, false);
     // O mais antigo de todos, e ainda assim o primeiro da lista.
@@ -273,10 +273,10 @@ test("entre os dois ids de obra, vale o que o resto da API aceita", async () => 
   const obraComOsDoisIds = {
     buildingID: 21,
     buildingIdView: 20,
-    buildingName: "iU.06 SCP",
+    buildingName: "OB.01 - Residencial Aurora",
     costCenterID: 21,
     costCenterIdView: 20,
-    constructUnits: [{ id: 1, name: "iU.06 SCP - Obra", status: "RELEASED" }],
+    constructUnits: [{ id: 1, name: "OB.01 - Obra", status: "RELEASED" }],
   };
   const sienge = await iniciarSienge({
     ...CENARIO,

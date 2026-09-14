@@ -3,7 +3,7 @@
   "name": "io.github.frlorenzon/sienge",
   "title": "Sienge ERP",
   "description": "Unofficial MCP server that puts Sienge, the Brazilian construction ERP, inside Claude",
-  "version": "0.13.0",
+  "version": "0.13.1",
   "websiteUrl": "https://github.com/frlorenzon/MCP-Sienge-Node#readme",
   "repository": {
     "url": "https://github.com/frlorenzon/MCP-Sienge-Node",
@@ -14,7 +14,7 @@
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "mcp-sienge-node",
-      "version": "0.13.0",
+      "version": "0.13.1",
       "transport": {
         "type": "stdio"
       },

@@ -18,7 +18,7 @@ npx -y mcp-sienge-node
 
 JavaScript puro (ESM), sem etapa de build e sem dependência além do SDK do MCP.
 
-> ⚠️ **ALFA — 0.13.0.** Em reescrita. A arquitetura mudou por inteiro na série 0.7 e
+> ⚠️ **ALFA — 0.13.1.** Em reescrita. A arquitetura mudou por inteiro na série 0.7 e
 > nomes de tool, formato de retorno e variáveis de ambiente ainda vão mudar sem
 > aviso. Compras e contratos já **gravam no ERP**: use primeiro num ambiente de
 > homologação, e leia a seção [Antes de apontar para produção](#antes-de-apontar-para-produção).

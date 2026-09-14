@@ -1,6 +1,6 @@
 {
   "name": "mcp-sienge-node",
-  "version": "0.13.0",
+  "version": "0.13.1",
   "description": "Conector Sienge para Claude: servidor MCP que põe o ERP Sienge dentro do Claude Code e do Claude Desktop — compras, contratos de suprimentos e medições. Não oficial.",
   "type": "module",
   "main": "src/index.js",

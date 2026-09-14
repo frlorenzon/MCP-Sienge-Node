@@ -31,7 +31,7 @@ function itemDePedido(numero, extra = {}) {
 // Fila com dois pedidos, de fornecedores e obras diferentes.
 const FILA = {
   centros: [
-    { id: 11, name: "Residencial Ipê Uva" },
+    { id: 11, name: "Residencial Aurora" },
     { id: 12, name: "Edifício Jacarandá" },
   ],
   credores: {
@@ -144,7 +144,7 @@ test("sem confirmar, nada é gravado e a prévia traz valor, fornecedor e obra",
     assert.deepEqual(
       r.previa.map((p) => [p.pedido, p.fornecedor, p.obra, p.totalAmount]),
       [
-        [8801, "Hidráulica Central Ltda", "Residencial Ipê Uva", 910],
+        [8801, "Hidráulica Central Ltda", "Residencial Aurora", 910],
         [8802, "Comercial Ferragens SA", "Edifício Jacarandá", 1250.4],
       ]
     );
