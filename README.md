@@ -9,7 +9,7 @@ escrita por quem usa o ERP.
 Compras, contratos de suprimentos e medições viram ferramentas que o assistente
 chama direto: consultar um contrato com valor, prazo e saldo, baixar os anexos,
 ver a fila de aprovação, criar uma solicitação de compra. Tudo **em português e
-por nome** — "obra iu.06", "tubo de esgoto", "instalações hidrossanitárias" —,
+por nome** — "Residencial Aurora", "tubo de esgoto", "instalações hidrossanitárias" —,
 com os códigos internos resolvidos dentro do servidor.
 
 ```bash
@@ -41,7 +41,8 @@ Edite o arquivo de configuração:
       "env": {
         "SIENGE_USERNAME": "seu-usuario",
         "SIENGE_PASSWORD": "sua-senha",
-        "SIENGE_SUBDOMAIN": "sua-empresa"
+        "SIENGE_SUBDOMAIN": "sua-empresa",
+        "SIENGE_PROFILE": "compras,contratos"
       }
     }
   }
@@ -51,6 +52,11 @@ Edite o arquivo de configuração:
 **Reinicie o Claude Desktop depois de salvar** — ele lê esse arquivo só na
 inicialização, e fechar a janela não encerra o processo. Use Cmd+Q (macOS) ou
 saia pela bandeja (Windows).
+
+`SIENGE_PROFILE` pré-carrega os módulos na subida. No Claude Desktop ele não é
+opcional na prática: sem ele, as ferramentas carregadas no meio da conversa
+podem não aparecer — ver [Se as ferramentas não aparecerem](#se-as-ferramentas-não-aparecerem-depois-de-carregar_).
+Deixe só os módulos que você usa; cada um custa tokens em toda mensagem.
 
 Se preferir Bearer Token no lugar de usuário e senha, troque as duas primeiras
 variáveis por `"SIENGE_API_KEY": "sua-chave"`. `SIENGE_SUBDOMAIN` é sempre
@@ -127,12 +133,12 @@ O que isso poupa, medido no catálogo real deste servidor:
 | Sessão | O que fica carregado | Custo por mensagem |
 |---|---|---|
 | só compras | núcleo + compras | ~8,4 KB |
-| só contratos | núcleo + contratos | ~5 KB |
-| tudo carregado | núcleo + os três módulos | ~12,8 KB |
+| só contratos | núcleo + contratos | ~5,3 KB |
+| tudo carregado | núcleo + os três módulos | ~13,1 KB |
 
 A diferença parece pequena em bytes e não é: ela é **multiplicada pelo número
 de mensagens da conversa**. Numa conversa de trinta trocas sobre compras,
-carregar contratos e financeiro junto custaria uns 78 KB de contexto que
+carregar contratos e financeiro junto custaria uns 141 KB de contexto que
 ninguém leu.
 
 `descarregar_modulos` faz o caminho de volta e devolve o catálogo ao núcleo,
@@ -294,8 +300,9 @@ raramente é o nome que a pessoa usa: em produção, "instalações
 hidrossanitárias" está gravado como *"SERVIÇO DE INSTALAÇÃO HIDRAULICA,
 ESGOTO, GÁS E INCÊNDIO"*. Isso é sinonímia de obra, não de grafia, e nenhuma
 regra de texto liga os dois sem chutar. Então a resposta traz **os contratos da
-janela ordenados por relevância**, cada um com o seu par — a obra IU.06 tem 75
-contratos em quatro anos, e ordenar por data escondia justamente o certo.
+janela ordenados por relevância**, cada um com o seu par — a obra em que isso
+aconteceu tem 75 contratos em quatro anos, e ordenar por data escondia
+justamente o certo.
 
 **4 · O cabeçalho é buscado de novo**, mesmo quando o passo 1 já achou o
 contrato na listagem: só o GET de um contrato devolve `materialBalance` e

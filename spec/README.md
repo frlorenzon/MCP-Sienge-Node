@@ -71,8 +71,8 @@ respondendo outra.
 E uma que não é de nome, mas de **valor**: `BuildingDTO` traz `buildingID`
 (interno) e `buildingIdView` (código da obra no Sienge), e é o **View** que
 todos os outros endpoints aceitam no parâmetro `buildingId` — apesar de o spec
-descrever esse parâmetro como "identificador (interno) da obra". Conferido no
-contrato CTS/325 da obra iU.06:
+descrever esse parâmetro como "identificador (interno) da obra". Conferido num
+contrato de produção:
 
 ```
 GET /supply-contracts/items?buildingId=21   → 404 "Obra 21 não encontrada"
